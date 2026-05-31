@@ -289,8 +289,7 @@ function showCountdown(target,bgData,name){
   targetTime = target.getTime()
 
   function tick(){
-    let now = performance.now()
-    let remaining = targetTime - (Date.now())
+    let remaining = targetTime - Date.now()
 
     if(remaining <= 0){
       cancelAnimationFrame(timer)
@@ -302,7 +301,6 @@ function showCountdown(target,bgData,name){
       document.getElementById("vs").textContent="0"
       document.getElementById("vms").textContent="000"
       document.getElementById("stat").textContent="Arrived"
-      alert("Time is up.")
       return
     }
 
