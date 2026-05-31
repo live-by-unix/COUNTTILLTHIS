@@ -64,6 +64,12 @@ body.dark *{
   inset:0;
   background:rgba(0,0,0,0.25);
   backdrop-filter:blur(12px);
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .2s;
+}
+body.blur-active .blur-overlay{
+  opacity:1;
 }
 
 /* Foreground */
@@ -118,7 +124,9 @@ body.dark .card{
   font-size:12px;
   opacity:.7;
 }
-.field input{
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="file"]{
   width:100%;
   padding:8px;
   border-radius:10px;
@@ -129,6 +137,13 @@ body.dark .card{
 body.dark .field input{
   background:rgba(0,0,0,0.4);
   border-color:var(--border-dark);
+}
+.field-inline{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:8px;
+  font-size:12px;
 }
 .btn{
   padding:10px 18px;
@@ -183,7 +198,7 @@ body.dark .block{
   margin-right:6px;
 }
 .copybtn:hover{transform:scale(1.05);}
-copybtn:active{transform:scale(0.95);}
+.copybtn:active{transform:scale(0.95);}
 body.dark .copybtn{
   border-color:var(--border-dark);
 }
@@ -229,21 +244,25 @@ body.dark .progress-wrap{
     <h2>Create a countdown</h2>
     <div class="grid">
       <div>
-        <div class="field"><label>Countdown name</label><input id="title"></div>
-        <div class="field"><label>Year</label><input id="y"></div>
-        <div class="field"><label>Month</label><input id="mo"></div>
-        <div class="field"><label>Day</label><input id="d"></div>
-        <div class="field"><label>Hour</label><input id="h"></div>
-        <div class="field"><label>Minute</label><input id="mi"></div>
-        <div class="field"><label>Second</label><input id="s"></div>
-        <div class="field"><label>Milliseconds *</label><input id="ms" required></div>
+        <div class="field"><label>Countdown name</label><input id="title" type="text"></div>
+        <div class="field"><label>Year</label><input id="y" type="number"></div>
+        <div class="field"><label>Month</label><input id="mo" type="number"></div>
+        <div class="field"><label>Day</label><input id="d" type="number"></div>
+        <div class="field"><label>Hour</label><input id="h" type="number"></div>
+        <div class="field"><label>Minute</label><input id="mi" type="number"></div>
+        <div class="field"><label>Second</label><input id="s" type="number"></div>
+        <div class="field"><label>Milliseconds *</label><input id="ms" type="number" required></div>
       </div>
       <div>
         <div class="field">
-          <label>Backgrounds (images / videos, multiple allowed)</label>
-          <input type="file" id="bgFiles" accept="image/*,video/*" multiple>
+          <label>Background (image / animated image / video)</label>
+          <input type="file" id="bgFile" accept="image/*,video/*">
         </div>
-        <div class="small-note">Animated GIF/APNG/WEBP/SVG and videos all work. First background is encoded into URL.</div>
+        <div class="field-inline">
+          <input type="checkbox" id="blurToggle">
+          <label for="blurToggle">Enable blur overlay</label>
+        </div>
+        <div class="small-note">1 background only. Data is stored in the URL (chunked) and supports GIF/APNG/WEBP/SVG/video.</div>
         <button class="btn" id="start">Start timer</button>
         <div id="err" style="color:#f66;font-size:12px;margin-top:8px;"></div>
       </div>
@@ -293,7 +312,8 @@ const y=document.getElementById("y"),
       s=document.getElementById("s"),
       ms=document.getElementById("ms"),
       title=document.getElementById("title"),
-      bgFiles=document.getElementById("bgFiles"),
+      bgFile=document.getElementById("bgFile"),
+      blurToggle=document.getElementById("blurToggle"),
       bgImageLayer=document.getElementById("bgImageLayer"),
       bgVideoLayer=document.getElementById("bgVideoLayer"),
       builder=document.getElementById("builder"),
@@ -304,11 +324,6 @@ const y=document.getElementById("y"),
 let timer=null;
 let targetTime=0;
 let totalDuration=0;
-
-/* Background playlist */
-let backgrounds=[]; // {type:"image"|"video", data:string}
-let bgIndex=0;
-let bgCycleTimer=null;
 
 /* Helpers */
 function gi(v){
@@ -329,53 +344,67 @@ function buildDate(){
   return new Date(Y,M-1,D,H,MI,S,MS);
 }
 
-/* URL encoding for first background only (to keep URL size sane) */
-function encodeURL(targetISO,firstBg,name){
-  const u=new URL(location.href);
-  u.search="";
-  if(firstBg) u.searchParams.set("img", encodeURIComponent(firstBg));
-  u.searchParams.set("t", targetISO);
-  if(name) u.searchParams.set("name", name);
-  return u.toString();
+/* Chunking: store one background across bg0,bg1,... */
+const CHUNK_SIZE=1500;
+
+function encodeBackgroundToParams(url, data){
+  // remove existing bg* params
+  for(const key of Array.from(url.searchParams.keys())){
+    if(/^bg\d+$/.test(key)) url.searchParams.delete(key);
+  }
+  if(!data) return;
+  for(let i=0;i<data.length;i+=CHUNK_SIZE){
+    const chunk=data.slice(i,i+CHUNK_SIZE);
+    url.searchParams.set("bg"+(i/CHUNK_SIZE), encodeURIComponent(chunk));
+  }
 }
 
-/* Apply a single background */
-function applyBackground(bg){
-  if(!bg){
+function decodeBackgroundFromParams(params){
+  const chunks=[];
+  const keys=[];
+  for(const [k,v] of params.entries()){
+    if(/^bg\d+$/.test(k)){
+      const idx=parseInt(k.slice(2),10);
+      if(!isNaN(idx)) keys.push({k,idx,v});
+    }
+  }
+  keys.sort((a,b)=>a.idx-b.idx);
+  for(const item of keys){
+    try{
+      chunks.push(decodeURIComponent(item.v));
+    }catch(e){}
+  }
+  if(!chunks.length) return "";
+  return chunks.join("");
+}
+
+/* Apply background */
+function applyBackground(data){
+  if(!data){
     bgImageLayer.style.backgroundImage="none";
     bgVideoLayer.style.display="none";
     bgVideoLayer.removeAttribute("src");
     bgVideoLayer.load();
     return;
   }
-  if(bg.type==="image"){
+  if(data.startsWith("data:video/")){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="block";
+    bgVideoLayer.src=data;
+    bgVideoLayer.load();
+    bgVideoLayer.play().catch(()=>{});
+  }else if(data.startsWith("data:image/")){
     bgVideoLayer.style.display="none";
     bgVideoLayer.removeAttribute("src");
     bgVideoLayer.load();
-    bgImageLayer.style.backgroundImage="url('"+bg.data+"')";
-  }else if(bg.type==="video"){
+    bgImageLayer.style.backgroundImage="url('"+data+"')";
+  }else{
     bgImageLayer.style.backgroundImage="none";
-    bgVideoLayer.style.display="block";
-    bgVideoLayer.src=bg.data;
-    bgVideoLayer.load();
-    bgVideoLayer.play().catch(()=>{});
+    bgVideoLayer.style.display="none";
   }
 }
 
-/* Cycle through multiple backgrounds */
-function startBackgroundCycle(){
-  if(backgrounds.length===0) return;
-  applyBackground(backgrounds[0]);
-  bgIndex=0;
-  if(bgCycleTimer) clearInterval(bgCycleTimer);
-  if(backgrounds.length===1) return;
-  bgCycleTimer=setInterval(()=>{
-    bgIndex=(bgIndex+1)%backgrounds.length;
-    applyBackground(backgrounds[bgIndex]);
-  },10000); // 10s per background
-}
-
-/* Parallax effect */
+/* Parallax */
 (function setupParallax(){
   let cx=window.innerWidth/2;
   let cy=window.innerHeight/2;
@@ -395,24 +424,15 @@ function startBackgroundCycle(){
   });
 })();
 
-/* Countdown view */
-function showCountdown(target,imgParamFromURL,name){
+/* Countdown */
+function showCountdown(target, bgDataFromURL, name, blurFlag){
   builder.classList.add("hidden");
   countview.classList.remove("hidden");
 
-  // If URL has an img param, ensure it's the first background
-  if(imgParamFromURL){
-    try{
-      const decoded=decodeURIComponent(imgParamFromURL);
-      if(decoded.startsWith("data:video/")){
-        backgrounds.unshift({type:"video",data:decoded});
-      }else if(decoded.startsWith("data:image/")){
-        backgrounds.unshift({type:"image",data:decoded});
-      }
-    }catch(e){}
-  }
+  if(blurFlag==="1") document.body.classList.add("blur-active");
+  else document.body.classList.remove("blur-active");
 
-  startBackgroundCycle();
+  if(bgDataFromURL) applyBackground(bgDataFromURL);
 
   document.getElementById("ctitle").textContent=name||"Countdown";
   document.getElementById("target").textContent="To "+target.toLocaleString();
@@ -456,7 +476,7 @@ function showCountdown(target,imgParamFromURL,name){
   timer=requestAnimationFrame(tick);
 }
 
-/* Start button */
+/* Start */
 document.getElementById("start").onclick=()=>{
   err.textContent="";
   let target;
@@ -468,49 +488,46 @@ document.getElementById("start").onclick=()=>{
   }
 
   const name=title.value.trim();
-  const files=Array.from(bgFiles.files||[]);
-  backgrounds=[];
-  if(files.length){
-    let loaded=0;
-    files.forEach((file,idx)=>{
-      const reader=new FileReader();
-      reader.onload=(ev)=>{
-        const raw=ev.target.result;
-        if(raw && typeof raw==="string"){
-          if(raw.startsWith("data:video/")){
-            backgrounds.push({type:"video",data:raw});
-          }else if(raw.startsWith("data:image/")){
-            backgrounds.push({type:"image",data:raw});
-          }
-        }
-        loaded++;
-        if(loaded===files.length){
-          // immediate preview
-          startBackgroundCycle();
-          // encode only first background into URL
-          const firstBg=backgrounds[0]?backgrounds[0].data:"";
-          const url=encodeURL(target.toISOString(),firstBg,name);
-          history.replaceState(null,"",url);
-          const params=new URLSearchParams(location.search);
-          showCountdown(target,params.get("img")||"",name);
-        }
-      };
-      reader.onerror=()=>{
-        loaded++;
-        if(loaded===files.length){
-          const firstBg=backgrounds[0]?backgrounds[0].data:"";
-          const url=encodeURL(target.toISOString(),firstBg,name);
-          history.replaceState(null,"",url);
-          const params=new URLSearchParams(location.search);
-          showCountdown(target,params.get("img")||"",name);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+  const blurFlag=blurToggle.checked?"1":"0";
+  const file=bgFile.files[0];
+
+  if(file){
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      const raw=ev.target.result;
+      if(!raw || typeof raw!=="string"){
+        err.textContent="Could not read background file.";
+        return;
+      }
+      applyBackground(raw); // immediate preview
+
+      const u=new URL(location.href);
+      u.search="";
+      u.searchParams.set("t", target.toISOString());
+      if(name) u.searchParams.set("name", name);
+      u.searchParams.set("blur", blurFlag);
+      encodeBackgroundToParams(u, raw);
+
+      history.replaceState(null,"",u.toString());
+
+      const params=new URLSearchParams(u.search);
+      const bgData=decodeBackgroundFromParams(params);
+      showCountdown(target,bgData,name,blurFlag);
+    };
+    reader.onerror=()=>{
+      err.textContent="Error reading background file.";
+    };
+    reader.readAsDataURL(file);
   }else{
-    const url=encodeURL(target.toISOString(),"",name);
-    history.replaceState(null,"",url);
-    showCountdown(target,"",name);
+    const u=new URL(location.href);
+    u.search="";
+    u.searchParams.set("t", target.toISOString());
+    if(name) u.searchParams.set("name", name);
+    u.searchParams.set("blur", blurFlag);
+    history.replaceState(null,"",u.toString());
+
+    const params=new URLSearchParams(u.search);
+    showCountdown(target,"",name,blurFlag);
   }
 };
 
@@ -521,14 +538,1123 @@ document.getElementById("new").onclick=()=>{
   location.reload();
 };
 
-/* Load from URL if present */
+/* Load from URL */
 window.addEventListener("DOMContentLoaded",()=>{
   const p=new URLSearchParams(location.search);
   if(p.has("t")){
     const t=new Date(p.get("t"));
-    const img=p.get("img")||"";
     const name=p.get("name")||"Countdown";
-    showCountdown(t,img,name);
+    const blurFlag=p.get("blur")||"0";
+    const bgData=decodeBackgroundFromParams(p);
+    showCountdown(t,bgData,name,blurFlag);
+  }
+});
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CountTillThis</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/23f0.svg">
+<style>
+:root{
+  --bg-light:#f2f2f2;
+  --bg-dark:#111;
+  --text-light:#111;
+  --text-dark:#fff;
+  --card-light:rgba(255,255,255,0.9);
+  --card-dark:rgba(0,0,0,0.85);
+  --border-light:rgba(0,0,0,0.1);
+  --border-dark:rgba(255,255,255,0.15);
+  --accent:#3b82f6;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+  background:var(--bg-light);
+  color:var(--text-light);
+  min-height:100vh;
+  transition:.2s;
+  position:relative;
+  overflow-x:hidden;
+}
+body.dark{
+  background:var(--bg-dark);
+  color:var(--text-dark);
+}
+body.dark *{
+  color:#fff!important;
+  text-shadow:0 0 6px rgba(0,0,0,0.9);
+}
+
+/* Background layers */
+.bg-container{
+  position:fixed;
+  inset:0;
+  overflow:hidden;
+  z-index:0;
+}
+#bgImageLayer{
+  position:absolute;
+  inset:0;
+  background:#777 center/cover no-repeat;
+  will-change:background-position;
+}
+#bgVideoLayer{
+  position:absolute;
+  inset:0;
+  object-fit:cover;
+  width:100%;
+  height:100%;
+  display:none;
+  will-change:transform;
+}
+.blur-overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,0.25);
+  backdrop-filter:blur(12px);
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .2s;
+}
+body.blur-active .blur-overlay{
+  opacity:1;
+}
+
+/* Foreground */
+.wrap{
+  max-width:900px;
+  margin:0 auto;
+  padding:20px;
+  position:relative;
+  z-index:2;
+}
+.top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+.toggle{
+  padding:6px 12px;
+  border-radius:20px;
+  border:1px solid var(--border-light);
+  cursor:pointer;
+  font-size:13px;
+  background:rgba(255,255,255,0.7);
+  transition:.15s;
+}
+.toggle:hover{transform:scale(1.05);}
+.toggle:active{transform:scale(0.95);}
+body.dark .toggle{
+  border-color:var(--border-dark);
+  background:rgba(0,0,0,0.6);
+}
+.card{
+  background:var(--card-light);
+  border:1px solid var(--border-light);
+  border-radius:16px;
+  padding:20px;
+  backdrop-filter:blur(12px);
+}
+body.dark .card{
+  background:var(--card-dark);
+  border-color:var(--border-dark);
+}
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+}
+@media(max-width:700px){
+  .grid{grid-template-columns:1fr;}
+}
+.field label{
+  font-size:12px;
+  opacity:.7;
+}
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="file"]{
+  width:100%;
+  padding:8px;
+  border-radius:10px;
+  border:1px solid var(--border-light);
+  background:rgba(255,255,255,0.9);
+  margin-top:4px;
+}
+body.dark .field input{
+  background:rgba(0,0,0,0.4);
+  border-color:var(--border-dark);
+}
+.field-inline{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:8px;
+  font-size:12px;
+}
+.btn{
+  padding:10px 18px;
+  border-radius:20px;
+  border:none;
+  background:var(--accent);
+  color:#fff;
+  cursor:pointer;
+  font-size:14px;
+  transition:.15s;
+}
+.btn:hover{transform:scale(1.05);}
+.btn:active{transform:scale(0.95);}
+.countgrid{
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+@media(max-width:700px){
+  .countgrid{grid-template-columns:repeat(2,1fr);}
+}
+.block{
+  text-align:center;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--border-light);
+  background:rgba(0,0,0,0.05);
+}
+body.dark .block{
+  background:rgba(255,255,255,0.05);
+  border-color:var(--border-dark);
+}
+.label{
+  font-size:11px;
+  opacity:.7;
+}
+.val{
+  font-size:24px;
+  font-weight:600;
+}
+.hidden{display:none;}
+.copybtn{
+  padding:8px 14px;
+  border-radius:20px;
+  border:1px solid var(--border-light);
+  background:transparent;
+  cursor:pointer;
+  font-size:13px;
+  transition:.15s;
+  margin-top:10px;
+  margin-right:6px;
+}
+.copybtn:hover{transform:scale(1.05);}
+.copybtn:active{transform:scale(0.95);}
+body.dark .copybtn{
+  border-color:var(--border-dark);
+}
+.progress-wrap{
+  width:100%;
+  height:10px;
+  background:rgba(0,0,0,0.15);
+  border-radius:10px;
+  margin-top:20px;
+  overflow:hidden;
+}
+body.dark .progress-wrap{
+  background:rgba(255,255,255,0.2);
+}
+.progress-bar{
+  height:100%;
+  width:0%;
+  background:var(--accent);
+  transition:width .05s linear;
+}
+.small-note{
+  font-size:11px;
+  opacity:.7;
+  margin-top:6px;
+}
+</style>
+</head>
+
+<body>
+<div class="bg-container">
+  <div id="bgImageLayer"></div>
+  <video id="bgVideoLayer" autoplay muted loop playsinline></video>
+  <div class="blur-overlay"></div>
+</div>
+
+<div class="wrap">
+  <div class="top">
+    <div style="font-weight:700;letter-spacing:.08em;">COUNTTILLTHIS</div>
+    <div class="toggle" id="modeToggle">🌙 Dark</div>
+  </div>
+
+  <div class="card" id="builder">
+    <h2>Create a countdown</h2>
+    <div class="grid">
+      <div>
+        <div class="field"><label>Countdown name</label><input id="title" type="text"></div>
+        <div class="field"><label>Year</label><input id="y" type="number"></div>
+        <div class="field"><label>Month</label><input id="mo" type="number"></div>
+        <div class="field"><label>Day</label><input id="d" type="number"></div>
+        <div class="field"><label>Hour</label><input id="h" type="number"></div>
+        <div class="field"><label>Minute</label><input id="mi" type="number"></div>
+        <div class="field"><label>Second</label><input id="s" type="number"></div>
+        <div class="field"><label>Milliseconds *</label><input id="ms" type="number" required></div>
+      </div>
+      <div>
+        <div class="field">
+          <label>Background (image / animated image / video)</label>
+          <input type="file" id="bgFile" accept="image/*,video/*">
+        </div>
+        <div class="field-inline">
+          <input type="checkbox" id="blurToggle">
+          <label for="blurToggle">Enable blur overlay</label>
+        </div>
+        <div class="small-note">1 background only. Data is stored in the URL (chunked) and supports GIF/APNG/WEBP/SVG/video.</div>
+        <button class="btn" id="start">Start timer</button>
+        <div id="err" style="color:#f66;font-size:12px;margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="countview">
+    <h2 id="ctitle"></h2>
+    <h3 id="target"></h3>
+
+    <div class="countgrid">
+      <div class="block"><div class="label">Years</div><div class="val" id="vy">0</div></div>
+      <div class="block"><div class="label">Months</div><div class="val" id="vmo">0</div></div>
+      <div class="block"><div class="label">Days</div><div class="val" id="vd">0</div></div>
+      <div class="block"><div class="label">Hours</div><div class="val" id="vh">0</div></div>
+      <div class="block"><div class="label">Minutes</div><div class="val" id="vmi">0</div></div>
+      <div class="block"><div class="label">Seconds</div><div class="val" id="vs">0</div></div>
+      <div class="block"><div class="label">Milliseconds</div><div class="val" id="vms">000</div></div>
+      <div class="block"><div class="label">Status</div><div class="val" id="stat">Running</div></div>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress"></div>
+    </div>
+
+    <div>
+      <button class="copybtn" id="copy">Copy URL</button>
+      <button class="copybtn" id="new">New timer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Theme toggle */
+const modeToggle=document.getElementById("modeToggle");
+modeToggle.onclick=()=>{
+  document.body.classList.toggle("dark");
+  modeToggle.textContent=document.body.classList.contains("dark")?"☀️ Light":"🌙 Dark";
+};
+
+/* Elements */
+const y=document.getElementById("y"),
+      mo=document.getElementById("mo"),
+      d=document.getElementById("d"),
+      h=document.getElementById("h"),
+      mi=document.getElementById("mi"),
+      s=document.getElementById("s"),
+      ms=document.getElementById("ms"),
+      title=document.getElementById("title"),
+      bgFile=document.getElementById("bgFile"),
+      blurToggle=document.getElementById("blurToggle"),
+      bgImageLayer=document.getElementById("bgImageLayer"),
+      bgVideoLayer=document.getElementById("bgVideoLayer"),
+      builder=document.getElementById("builder"),
+      countview=document.getElementById("countview"),
+      progress=document.getElementById("progress"),
+      err=document.getElementById("err");
+
+let timer=null;
+let targetTime=0;
+let totalDuration=0;
+
+/* Helpers */
+function gi(v){
+  const n=parseInt(v.value);
+  return isNaN(n)?null:n;
+}
+
+function buildDate(){
+  const n=new Date();
+  const Y=gi(y)??n.getFullYear();
+  const M=gi(mo)??(n.getMonth()+1);
+  const D=gi(d)??n.getDate();
+  const H=gi(h)??n.getHours();
+  const MI=gi(mi)??n.getMinutes();
+  const S=gi(s)??n.getSeconds();
+  const MS=gi(ms);
+  if(MS===null) throw "Milliseconds required";
+  return new Date(Y,M-1,D,H,MI,S,MS);
+}
+
+/* Chunking: store one background across bg0,bg1,... */
+const CHUNK_SIZE=1500;
+
+function encodeBackgroundToParams(url, data){
+  // remove existing bg* params
+  for(const key of Array.from(url.searchParams.keys())){
+    if(/^bg\d+$/.test(key)) url.searchParams.delete(key);
+  }
+  if(!data) return;
+  for(let i=0;i<data.length;i+=CHUNK_SIZE){
+    const chunk=data.slice(i,i+CHUNK_SIZE);
+    url.searchParams.set("bg"+(i/CHUNK_SIZE), encodeURIComponent(chunk));
+  }
+}
+
+function decodeBackgroundFromParams(params){
+  const chunks=[];
+  const keys=[];
+  for(const [k,v] of params.entries()){
+    if(/^bg\d+$/.test(k)){
+      const idx=parseInt(k.slice(2),10);
+      if(!isNaN(idx)) keys.push({k,idx,v});
+    }
+  }
+  keys.sort((a,b)=>a.idx-b.idx);
+  for(const item of keys){
+    try{
+      chunks.push(decodeURIComponent(item.v));
+    }catch(e){}
+  }
+  if(!chunks.length) return "";
+  return chunks.join("");
+}
+
+/* Apply background */
+function applyBackground(data){
+  if(!data){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="none";
+    bgVideoLayer.removeAttribute("src");
+    bgVideoLayer.load();
+    return;
+  }
+  if(data.startsWith("data:video/")){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="block";
+    bgVideoLayer.src=data;
+    bgVideoLayer.load();
+    bgVideoLayer.play().catch(()=>{});
+  }else if(data.startsWith("data:image/")){
+    bgVideoLayer.style.display="none";
+    bgVideoLayer.removeAttribute("src");
+    bgVideoLayer.load();
+    bgImageLayer.style.backgroundImage="url('"+data+"')";
+  }else{
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="none";
+  }
+}
+
+/* Parallax */
+(function setupParallax(){
+  let cx=window.innerWidth/2;
+  let cy=window.innerHeight/2;
+  window.addEventListener("resize",()=>{
+    cx=window.innerWidth/2;
+    cy=window.innerHeight/2;
+  });
+  window.addEventListener("mousemove",(e)=>{
+    const dx=(e.clientX-cx)/cx;
+    const dy=(e.clientY-cy)/cy;
+    const imgX=50+dx*5;
+    const imgY=50+dy*5;
+    bgImageLayer.style.backgroundPosition=imgX+"% "+imgY+"%";
+    const vdx=dx*10;
+    const vdy=dy*10;
+    bgVideoLayer.style.transform="translate("+vdx+"px,"+vdy+"px) scale(1.03)";
+  });
+})();
+
+/* Countdown */
+function showCountdown(target, bgDataFromURL, name, blurFlag){
+  builder.classList.add("hidden");
+  countview.classList.remove("hidden");
+
+  if(blurFlag==="1") document.body.classList.add("blur-active");
+  else document.body.classList.remove("blur-active");
+
+  if(bgDataFromURL) applyBackground(bgDataFromURL);
+
+  document.getElementById("ctitle").textContent=name||"Countdown";
+  document.getElementById("target").textContent="To "+target.toLocaleString();
+
+  targetTime=target.getTime();
+  totalDuration=targetTime - Date.now();
+
+  function tick(){
+    const remaining=targetTime - Date.now();
+    if(remaining<=0){
+      cancelAnimationFrame(timer);
+      progress.style.width="100%";
+      document.getElementById("vy").textContent="0";
+      document.getElementById("vmo").textContent="0";
+      document.getElementById("vd").textContent="0";
+      document.getElementById("vh").textContent="0";
+      document.getElementById("vmi").textContent="0";
+      document.getElementById("vs").textContent="0";
+      document.getElementById("vms").textContent="000";
+      document.getElementById("stat").textContent="Arrived";
+      return;
+    }
+
+    const diff=new Date(remaining);
+    document.getElementById("vy").textContent=diff.getUTCFullYear()-1970;
+    document.getElementById("vmo").textContent=diff.getUTCMonth();
+    document.getElementById("vd").textContent=diff.getUTCDate()-1;
+    document.getElementById("vh").textContent=diff.getUTCHours();
+    document.getElementById("vmi").textContent=diff.getUTCMinutes();
+    document.getElementById("vs").textContent=diff.getUTCSeconds();
+    document.getElementById("vms").textContent=diff.getUTCMilliseconds().toString().padStart(3,"0");
+
+    let progressPercent=((totalDuration-remaining)/totalDuration)*100;
+    if(progressPercent<0) progressPercent=0;
+    if(progressPercent>100) progressPercent=100;
+    progress.style.width=progressPercent+"%";
+
+    timer=requestAnimationFrame(tick);
+  }
+
+  timer=requestAnimationFrame(tick);
+}
+
+/* Start */
+document.getElementById("start").onclick=()=>{
+  err.textContent="";
+  let target;
+  try{
+    target=buildDate();
+  }catch(e){
+    err.textContent=e;
+    return;
+  }
+
+  const name=title.value.trim();
+  const blurFlag=blurToggle.checked?"1":"0";
+  const file=bgFile.files[0];
+
+  if(file){
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      const raw=ev.target.result;
+      if(!raw || typeof raw!=="string"){
+        err.textContent="Could not read background file.";
+        return;
+      }
+      applyBackground(raw); // immediate preview
+
+      const u=new URL(location.href);
+      u.search="";
+      u.searchParams.set("t", target.toISOString());
+      if(name) u.searchParams.set("name", name);
+      u.searchParams.set("blur", blurFlag);
+      encodeBackgroundToParams(u, raw);
+
+      history.replaceState(null,"",u.toString());
+
+      const params=new URLSearchParams(u.search);
+      const bgData=decodeBackgroundFromParams(params);
+      showCountdown(target,bgData,name,blurFlag);
+    };
+    reader.onerror=()=>{
+      err.textContent="Error reading background file.";
+    };
+    reader.readAsDataURL(file);
+  }else{
+    const u=new URL(location.href);
+    u.search="";
+    u.searchParams.set("t", target.toISOString());
+    if(name) u.searchParams.set("name", name);
+    u.searchParams.set("blur", blurFlag);
+    history.replaceState(null,"",u.toString());
+
+    const params=new URLSearchParams(u.search);
+    showCountdown(target,"",name,blurFlag);
+  }
+};
+
+/* Copy / New */
+document.getElementById("copy").onclick=()=>navigator.clipboard.writeText(location.href);
+document.getElementById("new").onclick=()=>{
+  history.replaceState(null,"",location.pathname);
+  location.reload();
+};
+
+/* Load from URL */
+window.addEventListener("DOMContentLoaded",()=>{
+  const p=new URLSearchParams(location.search);
+  if(p.has("t")){
+    const t=new Date(p.get("t"));
+    const name=p.get("name")||"Countdown";
+    const blurFlag=p.get("blur")||"0";
+    const bgData=decodeBackgroundFromParams(p);
+    showCountdown(t,bgData,name,blurFlag);
+  }
+});
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CountTillThis</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/23f0.svg">
+<style>
+:root{
+  --bg-light:#f2f2f2;
+  --bg-dark:#111;
+  --text-light:#111;
+  --text-dark:#fff;
+  --card-light:rgba(255,255,255,0.9);
+  --card-dark:rgba(0,0,0,0.85);
+  --border-light:rgba(0,0,0,0.1);
+  --border-dark:rgba(255,255,255,0.15);
+  --accent:#3b82f6;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+  background:var(--bg-light);
+  color:var(--text-light);
+  min-height:100vh;
+  transition:.2s;
+  position:relative;
+  overflow-x:hidden;
+}
+body.dark{
+  background:var(--bg-dark);
+  color:var(--text-dark);
+}
+body.dark *{
+  color:#fff!important;
+  text-shadow:0 0 6px rgba(0,0,0,0.9);
+}
+
+/* Background layers */
+.bg-container{
+  position:fixed;
+  inset:0;
+  overflow:hidden;
+  z-index:0;
+}
+#bgImageLayer{
+  position:absolute;
+  inset:0;
+  background:#777 center/cover no-repeat;
+  will-change:background-position;
+}
+#bgVideoLayer{
+  position:absolute;
+  inset:0;
+  object-fit:cover;
+  width:100%;
+  height:100%;
+  display:none;
+  will-change:transform;
+}
+.blur-overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,0.25);
+  backdrop-filter:blur(12px);
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .2s;
+}
+body.blur-active .blur-overlay{
+  opacity:1;
+}
+
+/* Foreground */
+.wrap{
+  max-width:900px;
+  margin:0 auto;
+  padding:20px;
+  position:relative;
+  z-index:2;
+}
+.top{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+.toggle{
+  padding:6px 12px;
+  border-radius:20px;
+  border:1px solid var(--border-light);
+  cursor:pointer;
+  font-size:13px;
+  background:rgba(255,255,255,0.7);
+  transition:.15s;
+}
+.toggle:hover{transform:scale(1.05);}
+.toggle:active{transform:scale(0.95);}
+body.dark .toggle{
+  border-color:var(--border-dark);
+  background:rgba(0,0,0,0.6);
+}
+.card{
+  background:var(--card-light);
+  border:1px solid var(--border-light);
+  border-radius:16px;
+  padding:20px;
+  backdrop-filter:blur(12px);
+}
+body.dark .card{
+  background:var(--card-dark);
+  border-color:var(--border-dark);
+}
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+}
+@media(max-width:700px){
+  .grid{grid-template-columns:1fr;}
+}
+.field label{
+  font-size:12px;
+  opacity:.7;
+}
+.field input[type="text"],
+.field input[type="number"],
+.field input[type="file"]{
+  width:100%;
+  padding:8px;
+  border-radius:10px;
+  border:1px solid var(--border-light);
+  background:rgba(255,255,255,0.9);
+  margin-top:4px;
+}
+body.dark .field input{
+  background:rgba(0,0,0,0.4);
+  border-color:var(--border-dark);
+}
+.field-inline{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:8px;
+  font-size:12px;
+}
+.btn{
+  padding:10px 18px;
+  border-radius:20px;
+  border:none;
+  background:var(--accent);
+  color:#fff;
+  cursor:pointer;
+  font-size:14px;
+  transition:.15s;
+}
+.btn:hover{transform:scale(1.05);}
+.btn:active{transform:scale(0.95);}
+.countgrid{
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+@media(max-width:700px){
+  .countgrid{grid-template-columns:repeat(2,1fr);}
+}
+.block{
+  text-align:center;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--border-light);
+  background:rgba(0,0,0,0.05);
+}
+body.dark .block{
+  background:rgba(255,255,255,0.05);
+  border-color:var(--border-dark);
+}
+.label{
+  font-size:11px;
+  opacity:.7;
+}
+.val{
+  font-size:24px;
+  font-weight:600;
+}
+.hidden{display:none;}
+.copybtn{
+  padding:8px 14px;
+  border-radius:20px;
+  border:1px solid var(--border-light);
+  background:transparent;
+  cursor:pointer;
+  font-size:13px;
+  transition:.15s;
+  margin-top:10px;
+  margin-right:6px;
+}
+.copybtn:hover{transform:scale(1.05);}
+.copybtn:active{transform:scale(0.95);}
+body.dark .copybtn{
+  border-color:var(--border-dark);
+}
+.progress-wrap{
+  width:100%;
+  height:10px;
+  background:rgba(0,0,0,0.15);
+  border-radius:10px;
+  margin-top:20px;
+  overflow:hidden;
+}
+body.dark .progress-wrap{
+  background:rgba(255,255,255,0.2);
+}
+.progress-bar{
+  height:100%;
+  width:0%;
+  background:var(--accent);
+  transition:width .05s linear;
+}
+.small-note{
+  font-size:11px;
+  opacity:.7;
+  margin-top:6px;
+}
+</style>
+</head>
+
+<body>
+<div class="bg-container">
+  <div id="bgImageLayer"></div>
+  <video id="bgVideoLayer" autoplay muted loop playsinline></video>
+  <div class="blur-overlay"></div>
+</div>
+
+<div class="wrap">
+  <div class="top">
+    <div style="font-weight:700;letter-spacing:.08em;">COUNTTILLTHIS</div>
+    <div class="toggle" id="modeToggle">🌙 Dark</div>
+  </div>
+
+  <div class="card" id="builder">
+    <h2>Create a countdown</h2>
+    <div class="grid">
+      <div>
+        <div class="field"><label>Countdown name</label><input id="title" type="text"></div>
+        <div class="field"><label>Year</label><input id="y" type="number"></div>
+        <div class="field"><label>Month</label><input id="mo" type="number"></div>
+        <div class="field"><label>Day</label><input id="d" type="number"></div>
+        <div class="field"><label>Hour</label><input id="h" type="number"></div>
+        <div class="field"><label>Minute</label><input id="mi" type="number"></div>
+        <div class="field"><label>Second</label><input id="s" type="number"></div>
+        <div class="field"><label>Milliseconds *</label><input id="ms" type="number" required></div>
+      </div>
+      <div>
+        <div class="field">
+          <label>Background (image / animated image / video)</label>
+          <input type="file" id="bgFile" accept="image/*,video/*">
+        </div>
+        <div class="field-inline">
+          <input type="checkbox" id="blurToggle">
+          <label for="blurToggle">Enable blur overlay</label>
+        </div>
+        <div class="small-note">1 background only. Data is stored in the URL (chunked) and supports GIF/APNG/WEBP/SVG/video.</div>
+        <button class="btn" id="start">Start timer</button>
+        <div id="err" style="color:#f66;font-size:12px;margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="countview">
+    <h2 id="ctitle"></h2>
+    <h3 id="target"></h3>
+
+    <div class="countgrid">
+      <div class="block"><div class="label">Years</div><div class="val" id="vy">0</div></div>
+      <div class="block"><div class="label">Months</div><div class="val" id="vmo">0</div></div>
+      <div class="block"><div class="label">Days</div><div class="val" id="vd">0</div></div>
+      <div class="block"><div class="label">Hours</div><div class="val" id="vh">0</div></div>
+      <div class="block"><div class="label">Minutes</div><div class="val" id="vmi">0</div></div>
+      <div class="block"><div class="label">Seconds</div><div class="val" id="vs">0</div></div>
+      <div class="block"><div class="label">Milliseconds</div><div class="val" id="vms">000</div></div>
+      <div class="block"><div class="label">Status</div><div class="val" id="stat">Running</div></div>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress"></div>
+    </div>
+
+    <div>
+      <button class="copybtn" id="copy">Copy URL</button>
+      <button class="copybtn" id="new">New timer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Theme toggle */
+const modeToggle=document.getElementById("modeToggle");
+modeToggle.onclick=()=>{
+  document.body.classList.toggle("dark");
+  modeToggle.textContent=document.body.classList.contains("dark")?"☀️ Light":"🌙 Dark";
+};
+
+/* Elements */
+const y=document.getElementById("y"),
+      mo=document.getElementById("mo"),
+      d=document.getElementById("d"),
+      h=document.getElementById("h"),
+      mi=document.getElementById("mi"),
+      s=document.getElementById("s"),
+      ms=document.getElementById("ms"),
+      title=document.getElementById("title"),
+      bgFile=document.getElementById("bgFile"),
+      blurToggle=document.getElementById("blurToggle"),
+      bgImageLayer=document.getElementById("bgImageLayer"),
+      bgVideoLayer=document.getElementById("bgVideoLayer"),
+      builder=document.getElementById("builder"),
+      countview=document.getElementById("countview"),
+      progress=document.getElementById("progress"),
+      err=document.getElementById("err");
+
+let timer=null;
+let targetTime=0;
+let totalDuration=0;
+
+/* Helpers */
+function gi(v){
+  const n=parseInt(v.value);
+  return isNaN(n)?null:n;
+}
+
+function buildDate(){
+  const n=new Date();
+  const Y=gi(y)??n.getFullYear();
+  const M=gi(mo)??(n.getMonth()+1);
+  const D=gi(d)??n.getDate();
+  const H=gi(h)??n.getHours();
+  const MI=gi(mi)??n.getMinutes();
+  const S=gi(s)??n.getSeconds();
+  const MS=gi(ms);
+  if(MS===null) throw "Milliseconds required";
+  return new Date(Y,M-1,D,H,MI,S,MS);
+}
+
+/* Chunking: store one background across bg0,bg1,... */
+const CHUNK_SIZE=1500;
+
+function encodeBackgroundToParams(url, data){
+  // remove existing bg* params
+  for(const key of Array.from(url.searchParams.keys())){
+    if(/^bg\d+$/.test(key)) url.searchParams.delete(key);
+  }
+  if(!data) return;
+  for(let i=0;i<data.length;i+=CHUNK_SIZE){
+    const chunk=data.slice(i,i+CHUNK_SIZE);
+    url.searchParams.set("bg"+(i/CHUNK_SIZE), encodeURIComponent(chunk));
+  }
+}
+
+function decodeBackgroundFromParams(params){
+  const chunks=[];
+  const keys=[];
+  for(const [k,v] of params.entries()){
+    if(/^bg\d+$/.test(k)){
+      const idx=parseInt(k.slice(2),10);
+      if(!isNaN(idx)) keys.push({k,idx,v});
+    }
+  }
+  keys.sort((a,b)=>a.idx-b.idx);
+  for(const item of keys){
+    try{
+      chunks.push(decodeURIComponent(item.v));
+    }catch(e){}
+  }
+  if(!chunks.length) return "";
+  return chunks.join("");
+}
+
+/* Apply background */
+function applyBackground(data){
+  if(!data){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="none";
+    bgVideoLayer.removeAttribute("src");
+    bgVideoLayer.load();
+    return;
+  }
+  if(data.startsWith("data:video/")){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="block";
+    bgVideoLayer.src=data;
+    bgVideoLayer.load();
+    bgVideoLayer.play().catch(()=>{});
+  }else if(data.startsWith("data:image/")){
+    bgVideoLayer.style.display="none";
+    bgVideoLayer.removeAttribute("src");
+    bgVideoLayer.load();
+    bgImageLayer.style.backgroundImage="url('"+data+"')";
+  }else{
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="none";
+  }
+}
+
+/* Parallax */
+(function setupParallax(){
+  let cx=window.innerWidth/2;
+  let cy=window.innerHeight/2;
+  window.addEventListener("resize",()=>{
+    cx=window.innerWidth/2;
+    cy=window.innerHeight/2;
+  });
+  window.addEventListener("mousemove",(e)=>{
+    const dx=(e.clientX-cx)/cx;
+    const dy=(e.clientY-cy)/cy;
+    const imgX=50+dx*5;
+    const imgY=50+dy*5;
+    bgImageLayer.style.backgroundPosition=imgX+"% "+imgY+"%";
+    const vdx=dx*10;
+    const vdy=dy*10;
+    bgVideoLayer.style.transform="translate("+vdx+"px,"+vdy+"px) scale(1.03)";
+  });
+})();
+
+/* Countdown */
+function showCountdown(target, bgDataFromURL, name, blurFlag){
+  builder.classList.add("hidden");
+  countview.classList.remove("hidden");
+
+  if(blurFlag==="1") document.body.classList.add("blur-active");
+  else document.body.classList.remove("blur-active");
+
+  if(bgDataFromURL) applyBackground(bgDataFromURL);
+
+  document.getElementById("ctitle").textContent=name||"Countdown";
+  document.getElementById("target").textContent="To "+target.toLocaleString();
+
+  targetTime=target.getTime();
+  totalDuration=targetTime - Date.now();
+
+  function tick(){
+    const remaining=targetTime - Date.now();
+    if(remaining<=0){
+      cancelAnimationFrame(timer);
+      progress.style.width="100%";
+      document.getElementById("vy").textContent="0";
+      document.getElementById("vmo").textContent="0";
+      document.getElementById("vd").textContent="0";
+      document.getElementById("vh").textContent="0";
+      document.getElementById("vmi").textContent="0";
+      document.getElementById("vs").textContent="0";
+      document.getElementById("vms").textContent="000";
+      document.getElementById("stat").textContent="Arrived";
+      return;
+    }
+
+    const diff=new Date(remaining);
+    document.getElementById("vy").textContent=diff.getUTCFullYear()-1970;
+    document.getElementById("vmo").textContent=diff.getUTCMonth();
+    document.getElementById("vd").textContent=diff.getUTCDate()-1;
+    document.getElementById("vh").textContent=diff.getUTCHours();
+    document.getElementById("vmi").textContent=diff.getUTCMinutes();
+    document.getElementById("vs").textContent=diff.getUTCSeconds();
+    document.getElementById("vms").textContent=diff.getUTCMilliseconds().toString().padStart(3,"0");
+
+    let progressPercent=((totalDuration-remaining)/totalDuration)*100;
+    if(progressPercent<0) progressPercent=0;
+    if(progressPercent>100) progressPercent=100;
+    progress.style.width=progressPercent+"%";
+
+    timer=requestAnimationFrame(tick);
+  }
+
+  timer=requestAnimationFrame(tick);
+}
+
+/* Start */
+document.getElementById("start").onclick=()=>{
+  err.textContent="";
+  let target;
+  try{
+    target=buildDate();
+  }catch(e){
+    err.textContent=e;
+    return;
+  }
+
+  const name=title.value.trim();
+  const blurFlag=blurToggle.checked?"1":"0";
+  const file=bgFile.files[0];
+
+  if(file){
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      const raw=ev.target.result;
+      if(!raw || typeof raw!=="string"){
+        err.textContent="Could not read background file.";
+        return;
+      }
+      applyBackground(raw); // immediate preview
+
+      const u=new URL(location.href);
+      u.search="";
+      u.searchParams.set("t", target.toISOString());
+      if(name) u.searchParams.set("name", name);
+      u.searchParams.set("blur", blurFlag);
+      encodeBackgroundToParams(u, raw);
+
+      history.replaceState(null,"",u.toString());
+
+      const params=new URLSearchParams(u.search);
+      const bgData=decodeBackgroundFromParams(params);
+      showCountdown(target,bgData,name,blurFlag);
+    };
+    reader.onerror=()=>{
+      err.textContent="Error reading background file.";
+    };
+    reader.readAsDataURL(file);
+  }else{
+    const u=new URL(location.href);
+    u.search="";
+    u.searchParams.set("t", target.toISOString());
+    if(name) u.searchParams.set("name", name);
+    u.searchParams.set("blur", blurFlag);
+    history.replaceState(null,"",u.toString());
+
+    const params=new URLSearchParams(u.search);
+    showCountdown(target,"",name,blurFlag);
+  }
+};
+
+/* Copy / New */
+document.getElementById("copy").onclick=()=>navigator.clipboard.writeText(location.href);
+document.getElementById("new").onclick=()=>{
+  history.replaceState(null,"",location.pathname);
+  location.reload();
+};
+
+/* Load from URL */
+window.addEventListener("DOMContentLoaded",()=>{
+  const p=new URLSearchParams(location.search);
+  if(p.has("t")){
+    const t=new Date(p.get("t"));
+    const name=p.get("name")||"Countdown";
+    const blurFlag=p.get("blur")||"0";
+    const bgData=decodeBackgroundFromParams(p);
+    showCountdown(t,bgData,name,blurFlag);
   }
 });
 </script>
