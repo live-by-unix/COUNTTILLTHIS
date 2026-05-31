@@ -36,18 +36,43 @@ body.dark *{
   color:#fff!important;
   text-shadow:0 0 6px rgba(0,0,0,0.9);
 }
-.bg-layer{
+
+/* Background layers */
+.bg-container{
   position:fixed;
   inset:0;
-  background:#777 center/cover no-repeat;
-  z-index:0; /* FIX: was -1, now visible */
+  overflow:hidden;
+  z-index:0;
 }
+#bgImageLayer{
+  position:absolute;
+  inset:0;
+  background:#777 center/cover no-repeat;
+  will-change:background-position;
+}
+#bgVideoLayer{
+  position:absolute;
+  inset:0;
+  object-fit:cover;
+  width:100%;
+  height:100%;
+  display:none;
+  will-change:transform;
+}
+.blur-overlay{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,0.25);
+  backdrop-filter:blur(12px);
+}
+
+/* Foreground */
 .wrap{
   max-width:900px;
   margin:0 auto;
   padding:20px;
   position:relative;
-  z-index:1;
+  z-index:2;
 }
 .top{
   display:flex;
@@ -158,7 +183,7 @@ body.dark .block{
   margin-right:6px;
 }
 .copybtn:hover{transform:scale(1.05);}
-.copybtn:active{transform:scale(0.95);}
+copybtn:active{transform:scale(0.95);}
 body.dark .copybtn{
   border-color:var(--border-dark);
 }
@@ -179,11 +204,20 @@ body.dark .progress-wrap{
   background:var(--accent);
   transition:width .05s linear;
 }
+.small-note{
+  font-size:11px;
+  opacity:.7;
+  margin-top:6px;
+}
 </style>
 </head>
 
 <body>
-<div class="bg-layer" id="bgLayer"></div>
+<div class="bg-container">
+  <div id="bgImageLayer"></div>
+  <video id="bgVideoLayer" autoplay muted loop playsinline></video>
+  <div class="blur-overlay"></div>
+</div>
 
 <div class="wrap">
   <div class="top">
@@ -205,9 +239,13 @@ body.dark .progress-wrap{
         <div class="field"><label>Milliseconds *</label><input id="ms" required></div>
       </div>
       <div>
-        <div class="field"><label>Background image</label><input type="file" id="bg" accept="image/*"></div>
+        <div class="field">
+          <label>Backgrounds (images / videos, multiple allowed)</label>
+          <input type="file" id="bgFiles" accept="image/*,video/*" multiple>
+        </div>
+        <div class="small-note">Animated GIF/APNG/WEBP/SVG and videos all work. First background is encoded into URL.</div>
         <button class="btn" id="start">Start timer</button>
-        <div id="err" style="color:#e33;font-size:12px;margin-top:8px;"></div>
+        <div id="err" style="color:#f66;font-size:12px;margin-top:8px;"></div>
       </div>
     </div>
   </div>
@@ -239,98 +277,142 @@ body.dark .progress-wrap{
 </div>
 
 <script>
-let modeToggle=document.getElementById("modeToggle");
+/* Theme toggle */
+const modeToggle=document.getElementById("modeToggle");
 modeToggle.onclick=()=>{
   document.body.classList.toggle("dark");
   modeToggle.textContent=document.body.classList.contains("dark")?"☀️ Light":"🌙 Dark";
 };
 
-let y=document.getElementById("y"),
-    mo=document.getElementById("mo"),
-    d=document.getElementById("d"),
-    h=document.getElementById("h"),
-    mi=document.getElementById("mi"),
-    s=document.getElementById("s"),
-    ms=document.getElementById("ms"),
-    title=document.getElementById("title"),
-    bgInput=document.getElementById("bg"),
-    bgLayer=document.getElementById("bgLayer"),
-    builder=document.getElementById("builder"),
-    countview=document.getElementById("countview"),
-    progress=document.getElementById("progress"),
-    err=document.getElementById("err");
+/* Elements */
+const y=document.getElementById("y"),
+      mo=document.getElementById("mo"),
+      d=document.getElementById("d"),
+      h=document.getElementById("h"),
+      mi=document.getElementById("mi"),
+      s=document.getElementById("s"),
+      ms=document.getElementById("ms"),
+      title=document.getElementById("title"),
+      bgFiles=document.getElementById("bgFiles"),
+      bgImageLayer=document.getElementById("bgImageLayer"),
+      bgVideoLayer=document.getElementById("bgVideoLayer"),
+      builder=document.getElementById("builder"),
+      countview=document.getElementById("countview"),
+      progress=document.getElementById("progress"),
+      err=document.getElementById("err");
 
 let timer=null;
 let targetTime=0;
 let totalDuration=0;
 
+/* Background playlist */
+let backgrounds=[]; // {type:"image"|"video", data:string}
+let bgIndex=0;
+let bgCycleTimer=null;
+
+/* Helpers */
 function gi(v){
-  let n=parseInt(v.value);
+  const n=parseInt(v.value);
   return isNaN(n)?null:n;
 }
 
 function buildDate(){
-  let n=new Date();
-  let Y=gi(y)??n.getFullYear();
-  let M=gi(mo)??(n.getMonth()+1);
-  let D=gi(d)??n.getDate();
-  let H=gi(h)??n.getHours();
-  let MI=gi(mi)??n.getMinutes();
-  let S=gi(s)??n.getSeconds();
-  let MS=gi(ms);
+  const n=new Date();
+  const Y=gi(y)??n.getFullYear();
+  const M=gi(mo)??(n.getMonth()+1);
+  const D=gi(d)??n.getDate();
+  const H=gi(h)??n.getHours();
+  const MI=gi(mi)??n.getMinutes();
+  const S=gi(s)??n.getSeconds();
+  const MS=gi(ms);
   if(MS===null) throw "Milliseconds required";
   return new Date(Y,M-1,D,H,MI,S,MS);
 }
 
-function autoResize(img){
-  let w=img.width, h=img.height;
-  let max=Math.max(w,h);
-  let target=1024;
-  if(max>1024 && max<=1920) target=1920;
-  else if(max>1920 && max<=3840) target=2560;
-  else if(max>3840) target=3200;
-  let scale=target/max;
-  let cw=w*scale, ch=h*scale;
-  let c=document.createElement("canvas");
-  c.width=cw; c.height=ch;
-  let ctx=c.getContext("2d");
-  ctx.drawImage(img,0,0,cw,ch);
-  return c.toDataURL("image/jpeg",0.85);
-}
-
-function encodeURL(targetISO,imgData,name){
-  let u=new URL(location.href);
+/* URL encoding for first background only (to keep URL size sane) */
+function encodeURL(targetISO,firstBg,name){
+  const u=new URL(location.href);
   u.search="";
-  if(imgData) u.searchParams.set("img", encodeURIComponent(imgData));
+  if(firstBg) u.searchParams.set("img", encodeURIComponent(firstBg));
   u.searchParams.set("t", targetISO);
   if(name) u.searchParams.set("name", name);
   return u.toString();
 }
 
-function showBackground(imgParam){
-  if(!imgParam){
-    bgLayer.style.backgroundImage="none";
+/* Apply a single background */
+function applyBackground(bg){
+  if(!bg){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="none";
+    bgVideoLayer.removeAttribute("src");
+    bgVideoLayer.load();
     return;
   }
-  let data;
-  try{
-    data=decodeURIComponent(imgParam);
-  }catch(e){
-    bgLayer.style.backgroundImage="none";
-    return;
-  }
-  if(data){
-    bgLayer.style.backgroundImage="url('"+data+"')";
-  }else{
-    bgLayer.style.backgroundImage="none";
+  if(bg.type==="image"){
+    bgVideoLayer.style.display="none";
+    bgVideoLayer.removeAttribute("src");
+    bgVideoLayer.load();
+    bgImageLayer.style.backgroundImage="url('"+bg.data+"')";
+  }else if(bg.type==="video"){
+    bgImageLayer.style.backgroundImage="none";
+    bgVideoLayer.style.display="block";
+    bgVideoLayer.src=bg.data;
+    bgVideoLayer.load();
+    bgVideoLayer.play().catch(()=>{});
   }
 }
 
-function showCountdown(target,imgParam,name){
+/* Cycle through multiple backgrounds */
+function startBackgroundCycle(){
+  if(backgrounds.length===0) return;
+  applyBackground(backgrounds[0]);
+  bgIndex=0;
+  if(bgCycleTimer) clearInterval(bgCycleTimer);
+  if(backgrounds.length===1) return;
+  bgCycleTimer=setInterval(()=>{
+    bgIndex=(bgIndex+1)%backgrounds.length;
+    applyBackground(backgrounds[bgIndex]);
+  },10000); // 10s per background
+}
+
+/* Parallax effect */
+(function setupParallax(){
+  let cx=window.innerWidth/2;
+  let cy=window.innerHeight/2;
+  window.addEventListener("resize",()=>{
+    cx=window.innerWidth/2;
+    cy=window.innerHeight/2;
+  });
+  window.addEventListener("mousemove",(e)=>{
+    const dx=(e.clientX-cx)/cx;
+    const dy=(e.clientY-cy)/cy;
+    const imgX=50+dx*5;
+    const imgY=50+dy*5;
+    bgImageLayer.style.backgroundPosition=imgX+"% "+imgY+"%";
+    const vdx=dx*10;
+    const vdy=dy*10;
+    bgVideoLayer.style.transform="translate("+vdx+"px,"+vdy+"px) scale(1.03)";
+  });
+})();
+
+/* Countdown view */
+function showCountdown(target,imgParamFromURL,name){
   builder.classList.add("hidden");
   countview.classList.remove("hidden");
 
-  showBackground(imgParam);
+  // If URL has an img param, ensure it's the first background
+  if(imgParamFromURL){
+    try{
+      const decoded=decodeURIComponent(imgParamFromURL);
+      if(decoded.startsWith("data:video/")){
+        backgrounds.unshift({type:"video",data:decoded});
+      }else if(decoded.startsWith("data:image/")){
+        backgrounds.unshift({type:"image",data:decoded});
+      }
+    }catch(e){}
+  }
+
+  startBackgroundCycle();
 
   document.getElementById("ctitle").textContent=name||"Countdown";
   document.getElementById("target").textContent="To "+target.toLocaleString();
@@ -339,7 +421,7 @@ function showCountdown(target,imgParam,name){
   totalDuration=targetTime - Date.now();
 
   function tick(){
-    let remaining=targetTime - Date.now();
+    const remaining=targetTime - Date.now();
     if(remaining<=0){
       cancelAnimationFrame(timer);
       progress.style.width="100%";
@@ -354,7 +436,7 @@ function showCountdown(target,imgParam,name){
       return;
     }
 
-    let diff=new Date(remaining);
+    const diff=new Date(remaining);
     document.getElementById("vy").textContent=diff.getUTCFullYear()-1970;
     document.getElementById("vmo").textContent=diff.getUTCMonth();
     document.getElementById("vd").textContent=diff.getUTCDate()-1;
@@ -374,6 +456,7 @@ function showCountdown(target,imgParam,name){
   timer=requestAnimationFrame(tick);
 }
 
+/* Start button */
 document.getElementById("start").onclick=()=>{
   err.textContent="";
   let target;
@@ -384,54 +467,67 @@ document.getElementById("start").onclick=()=>{
     return;
   }
 
-  let name=title.value.trim();
-  let file=bgInput.files[0];
-
-  if(file){
-    let reader=new FileReader();
-    reader.onload=(ev)=>{
-      let raw=ev.target.result;
-      if(!raw){
-        err.textContent="Could not read image.";
-        return;
-      }
-      let img=new Image();
-      img.onload=()=>{
-        let resizedData=autoResize(img);
-        bgLayer.style.backgroundImage="url('"+resizedData+"')"; 
-        let url=encodeURL(target.toISOString(),resizedData,name);
-        history.replaceState(null,"",url);
-        let params=new URLSearchParams(location.search);
-        showCountdown(target,params.get("img")||"",name);
+  const name=title.value.trim();
+  const files=Array.from(bgFiles.files||[]);
+  backgrounds=[];
+  if(files.length){
+    let loaded=0;
+    files.forEach((file,idx)=>{
+      const reader=new FileReader();
+      reader.onload=(ev)=>{
+        const raw=ev.target.result;
+        if(raw && typeof raw==="string"){
+          if(raw.startsWith("data:video/")){
+            backgrounds.push({type:"video",data:raw});
+          }else if(raw.startsWith("data:image/")){
+            backgrounds.push({type:"image",data:raw});
+          }
+        }
+        loaded++;
+        if(loaded===files.length){
+          // immediate preview
+          startBackgroundCycle();
+          // encode only first background into URL
+          const firstBg=backgrounds[0]?backgrounds[0].data:"";
+          const url=encodeURL(target.toISOString(),firstBg,name);
+          history.replaceState(null,"",url);
+          const params=new URLSearchParams(location.search);
+          showCountdown(target,params.get("img")||"",name);
+        }
       };
-      img.onerror=()=>{
-        err.textContent="Invalid image file.";
+      reader.onerror=()=>{
+        loaded++;
+        if(loaded===files.length){
+          const firstBg=backgrounds[0]?backgrounds[0].data:"";
+          const url=encodeURL(target.toISOString(),firstBg,name);
+          history.replaceState(null,"",url);
+          const params=new URLSearchParams(location.search);
+          showCountdown(target,params.get("img")||"",name);
+        }
       };
-      img.src=raw;
-    };
-    reader.onerror=()=>{
-      err.textContent="Error reading image file.";
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    });
   }else{
-    let url=encodeURL(target.toISOString(),"",name);
+    const url=encodeURL(target.toISOString(),"",name);
     history.replaceState(null,"",url);
     showCountdown(target,"",name);
   }
 };
 
+/* Copy / New */
 document.getElementById("copy").onclick=()=>navigator.clipboard.writeText(location.href);
 document.getElementById("new").onclick=()=>{
   history.replaceState(null,"",location.pathname);
   location.reload();
 };
 
+/* Load from URL if present */
 window.addEventListener("DOMContentLoaded",()=>{
-  let p=new URLSearchParams(location.search);
+  const p=new URLSearchParams(location.search);
   if(p.has("t")){
-    let t=new Date(p.get("t"));
-    let img=p.get("img")||"";
-    let name=p.get("name")||"Countdown";
+    const t=new Date(p.get("t"));
+    const img=p.get("img")||"";
+    const name=p.get("name")||"Countdown";
     showCountdown(t,img,name);
   }
 });
