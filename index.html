@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <title>CountTillThis</title>
+<link rel="icon" href="https://jsdelivr.net" type="image/svg+xml">
+<link rel="apple-touch-icon" href="https://cloudflare.com">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQwIj48dGV4dCB4PSI1MCUiIHk9IjcwJSIgZm9udC1zaXplPSIyMDAiIGR5PSIwLjM1ZW0iIHRleHQtYW5jaG9yPSJtaWRkbGUiPuKZqTwvdGV4dD48L3N2Zz4=">
 
 <style>
 :root {
@@ -35,7 +36,11 @@ body {
 body.dark {
   background:var(--bg-dark);
   color:var(--text-dark);
-  text-shadow:0 0 6px rgba(0,0,0,0.7);
+}
+
+body.dark *, body.dark .val, body.dark .label, body.dark h2, body.dark h3 {
+  color:#fff !important;
+  text-shadow:0 0 6px rgba(0,0,0,0.9);
 }
 
 .bg-layer {
@@ -166,6 +171,25 @@ body.dark .block {
 .copybtn:hover {transform:scale(1.05);}
 .copybtn:active {transform:scale(0.95);}
 body.dark .copybtn {border-color:var(--border-dark);}
+
+/* Progress bar */
+.progress-wrap {
+  width:100%;
+  height:10px;
+  background:rgba(0,0,0,0.15);
+  border-radius:10px;
+  margin-top:20px;
+  overflow:hidden;
+}
+body.dark .progress-wrap {
+  background:rgba(255,255,255,0.2);
+}
+.progress-bar {
+  height:100%;
+  width:0%;
+  background:var(--accent);
+  transition:width .05s linear;
+}
 </style>
 </head>
 
@@ -215,6 +239,10 @@ body.dark .copybtn {border-color:var(--border-dark);}
       <div class="block"><div class="label">Status</div><div class="val" id="stat">Running</div></div>
     </div>
 
+    <div class="progress-wrap">
+      <div class="progress-bar" id="progress"></div>
+    </div>
+
     <div>
       <button class="copybtn" id="copy">Copy URL</button>
       <button class="copybtn" id="new">New timer</button>
@@ -247,10 +275,12 @@ let y=document.getElementById("y"),
     bgInput=document.getElementById("bg"),
     bgLayer=document.getElementById("bgLayer"),
     builder=document.getElementById("builder"),
-    countview=document.getElementById("countview")
+    countview=document.getElementById("countview"),
+    progress=document.getElementById("progress")
 
 let timer=null
 let targetTime=0
+let totalDuration=0
 
 function gi(v){let n=parseInt(v.value);return isNaN(n)?null:n}
 
@@ -287,12 +317,14 @@ function showCountdown(target,bgData,name){
   document.getElementById("target").textContent="To "+target.toLocaleString()
 
   targetTime = target.getTime()
+  totalDuration = targetTime - Date.now()
 
   function tick(){
     let remaining = targetTime - Date.now()
 
     if(remaining <= 0){
       cancelAnimationFrame(timer)
+      progress.style.width="100%"
       document.getElementById("vy").textContent="0"
       document.getElementById("vmo").textContent="0"
       document.getElementById("vd").textContent="0"
@@ -312,6 +344,9 @@ function showCountdown(target,bgData,name){
     document.getElementById("vmi").textContent = diff.getUTCMinutes()
     document.getElementById("vs").textContent = diff.getUTCSeconds()
     document.getElementById("vms").textContent = diff.getUTCMilliseconds().toString().padStart(3,"0")
+
+    let progressPercent = ((totalDuration - remaining) / totalDuration) * 100
+    progress.style.width = progressPercent + "%"
 
     timer = requestAnimationFrame(tick)
   }
