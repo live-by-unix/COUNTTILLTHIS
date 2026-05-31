@@ -40,7 +40,7 @@ body.dark *{
   position:fixed;
   inset:0;
   background:#777 center/cover no-repeat;
-  z-index:-1;
+  z-index:0; /* FIX: was -1, now visible */
 }
 .wrap{
   max-width:900px;
@@ -398,7 +398,7 @@ document.getElementById("start").onclick=()=>{
       let img=new Image();
       img.onload=()=>{
         let resizedData=autoResize(img);
-        bgLayer.style.backgroundImage="url('"+resizedData+"')"; // immediate
+        bgLayer.style.backgroundImage="url('"+resizedData+"')"; 
         let url=encodeURL(target.toISOString(),resizedData,name);
         history.replaceState(null,"",url);
         let params=new URLSearchParams(location.search);
