@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CountTillThis</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNDAiIGhlaWdodD0iMjQwIj48dGV4dCB4PSI1MCUiIHk9IjcwJSIgZm9udC1zaXplPSIyMDAiIGR5PSIwLjM1ZW0iIHRleHQtYW5jaG9yPSJtaWRkbGUiPuKZqTwvdGV4dD48L3N2Zz4=">
+
+<style>
+:root {
+  --bg-light:#f2f2f2;
+  --bg-dark:#111;
+  --text-light:#111;
+  --text-dark:#fff;
+  --card-light:rgba(255,255,255,0.9);
+  --card-dark:rgba(0,0,0,0.85);
+  --border-light:rgba(0,0,0,0.1);
+  --border-dark:rgba(255,255,255,0.15);
+  --accent:#3b82f6;
+}
+
+*{box-sizing:border-box;}
+
+body {
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,sans-serif;
+  background:var(--bg-light);
+  color:var(--text-light);
+  min-height:100vh;
+  transition:background-color .2s,color .2s;
+  position:relative;
+  overflow-x:hidden;
+}
+
+body.dark {
+  background:var(--bg-dark);
+  color:var(--text-dark);
+  text-shadow:0 0 6px rgba(0,0,0,0.7);
+}
+
+.bg-layer {
+  position:fixed;
+  inset:0;
+  background:#777 center/cover no-repeat;
+  z-index:-1;
+}
+
+.wrap {
+  max-width:900px;
+  margin:0 auto;
+  padding:20px;
+  position:relative;
+  z-index:1;
+}
+
+.top {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+
+.toggle {
+  padding:6px 12px;
+  border-radius:20px;
+  border:1px solid var(--border-light);
+  cursor:pointer;
+  font-size:13px;
+  background:rgba(255,255,255,0.7);
+  transition:.15s;
+}
+.toggle:hover {transform:scale(1.05);}
+.toggle:active {transform:scale(0.95);}
+body.dark .toggle {
+  border-color:var(--border-dark);
+  background:rgba(0,0,0,0.6);
+}
+
+.card {
+  background:var(--card-light);
+  border:1px solid var(--border-light);
+  border-radius:16px;
+  padding:20px;
+  backdrop-filter:blur(12px);
+}
+body.dark .card {
+  background:var(--card-dark);
+  border-color:var(--border-dark);
+}
+
+.grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:20px;
+}
+@media(max-width:700px){.grid{grid-template-columns:1fr;}}
+
+.field label {
+  font-size:12px;
+  opacity:.7;
+}
+.field input {
+  width:100%;
+  padding:8px;
+  border-radius:10px;
+  border:1px solid var(--border-light);
+  background:rgba(255,255,255,0.9);
+  margin-top:4px;
+}
+body.dark .field input {
+  background:rgba(0,0,0,0.4);
+  border-color:var(--border-dark);
+}
+
+.btn {
+  padding:10px 18px;
+  border-radius:20px;
+  border:none;
+  background:var(--accent);
+  color:#fff;
+  cursor:pointer;
+  font-size:14px;
+  transition:.15s;
+}
+.btn:hover {transform:scale(1.05);}
+.btn:active {transform:scale(0.95);}
+
+.countgrid {
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+}
+@media(max-width:700px){
+  .countgrid{grid-template-columns:repeat(2,1fr);}
+}
+
+.block {
+  text-align:center;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--border-light);
+  background:rgba(0,0,0,0.05);
+}
+body.dark .block {
+  background:rgba(255,255,255,0.05);
+  border-color:var(--border-dark);
+}
+
+.label {font-size:11px;opacity:.7;}
+.val {font-size:24px;font-weight:600;}
+
+.hidden {display:none;}
+
+.copybtn {
+  padding:8px 14px;
+  border-radius:20px;
+  border:1px solid var(--border-light);
+  background:transparent;
+  cursor:pointer;
+  font-size:13px;
+  transition:.15s;
+  margin-top:10px;
+  margin-right:6px;
+}
+.copybtn:hover {transform:scale(1.05);}
+.copybtn:active {transform:scale(0.95);}
+body.dark .copybtn {border-color:var(--border-dark);}
+</style>
+</head>
+
+<body>
+<div class="bg-layer" id="bgLayer"></div>
+
+<div class="wrap">
+  <div class="top">
+    <div style="font-weight:700;letter-spacing:.08em;">COUNTTILLTHIS</div>
+    <div class="toggle" id="modeToggle">🌙 Dark</div>
+  </div>
+
+  <div class="card" id="builder">
+    <h2>Create a countdown</h2>
+    <div class="grid">
+      <div>
+        <div class="field"><label>Countdown name</label><input id="title"></div>
+        <div class="field"><label>Year</label><input id="y"></div>
+        <div class="field"><label>Month</label><input id="mo"></div>
+        <div class="field"><label>Day</label><input id="d"></div>
+        <div class="field"><label>Hour</label><input id="h"></div>
+        <div class="field"><label>Minute</label><input id="mi"></div>
+        <div class="field"><label>Second</label><input id="s"></div>
+        <div class="field"><label>Milliseconds *</label><input id="ms" required></div>
+      </div>
+
+      <div>
+        <div class="field"><label>Background image</label><input type="file" id="bg" accept="image/*"></div>
+        <button class="btn" id="start">Start timer</button>
+        <div id="err" style="color:#e33;font-size:12px;margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card hidden" id="countview">
+    <h2 id="ctitle"></h2>
+    <h3 id="target"></h3>
+
+    <div class="countgrid">
+      <div class="block"><div class="label">Years</div><div class="val" id="vy">0</div></div>
+      <div class="block"><div class="label">Months</div><div class="val" id="vmo">0</div></div>
+      <div class="block"><div class="label">Days</div><div class="val" id="vd">0</div></div>
+      <div class="block"><div class="label">Hours</div><div class="val" id="vh">0</div></div>
+      <div class="block"><div class="label">Minutes</div><div class="val" id="vmi">0</div></div>
+      <div class="block"><div class="label">Seconds</div><div class="val" id="vs">0</div></div>
+      <div class="block"><div class="label">Milliseconds</div><div class="val" id="vms">000</div></div>
+      <div class="block"><div class="label">Status</div><div class="val" id="stat">Running</div></div>
+    </div>
+
+    <div>
+      <button class="copybtn" id="copy">Copy URL</button>
+      <button class="copybtn" id="new">New timer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let modeToggle=document.getElementById("modeToggle")
+function setTheme(d){
+  if(d){
+    document.body.classList.add("dark")
+    modeToggle.textContent="☀️ Light"
+  } else {
+    document.body.classList.remove("dark")
+    modeToggle.textContent="🌙 Dark"
+  }
+}
+modeToggle.onclick=()=>setTheme(!document.body.classList.contains("dark"))
+setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches)
+
+let y=document.getElementById("y"),
+    mo=document.getElementById("mo"),
+    d=document.getElementById("d"),
+    h=document.getElementById("h"),
+    mi=document.getElementById("mi"),
+    s=document.getElementById("s"),
+    ms=document.getElementById("ms"),
+    title=document.getElementById("title"),
+    bgInput=document.getElementById("bg"),
+    bgLayer=document.getElementById("bgLayer"),
+    builder=document.getElementById("builder"),
+    countview=document.getElementById("countview")
+
+let timer=null
+let targetTime=0
+
+function gi(v){let n=parseInt(v.value);return isNaN(n)?null:n}
+
+function buildDate(){
+  let n=new Date()
+  let Y=gi(y)??n.getFullYear()
+  let M=gi(mo)??(n.getMonth()+1)
+  let D=gi(d)??n.getDate()
+  let H=gi(h)??n.getHours()
+  let MI=gi(mi)??n.getMinutes()
+  let S=gi(s)??n.getSeconds()
+  let MS=gi(ms)
+  if(MS===null)throw"Milliseconds required"
+  return new Date(Y,M-1,D,H,MI,S,MS)
+}
+
+function encodeURL(targetISO,bgData,name){
+  let u=new URL(location.href)
+  u.search=""
+  u.searchParams.set("t",targetISO)
+  if(bgData)u.searchParams.set("bg",bgData)
+  if(name)u.searchParams.set("name",name)
+  return u.toString()
+}
+
+function showCountdown(target,bgData,name){
+  builder.classList.add("hidden")
+  countview.classList.remove("hidden")
+
+  if(bgData) bgLayer.style.backgroundImage="url('"+bgData+"')"
+  else bgLayer.style.backgroundImage="none"
+
+  document.getElementById("ctitle").textContent=name||"Countdown"
+  document.getElementById("target").textContent="To "+target.toLocaleString()
+
+  targetTime = target.getTime()
+
+  function tick(){
+    let now = performance.now()
+    let remaining = targetTime - (Date.now())
+
+    if(remaining <= 0){
+      cancelAnimationFrame(timer)
+      document.getElementById("vy").textContent="0"
+      document.getElementById("vmo").textContent="0"
+      document.getElementById("vd").textContent="0"
+      document.getElementById("vh").textContent="0"
+      document.getElementById("vmi").textContent="0"
+      document.getElementById("vs").textContent="0"
+      document.getElementById("vms").textContent="000"
+      document.getElementById("stat").textContent="Arrived"
+      alert("Time is up.")
+      return
+    }
+
+    let diff = new Date(remaining)
+    document.getElementById("vy").textContent = diff.getUTCFullYear() - 1970
+    document.getElementById("vmo").textContent = diff.getUTCMonth()
+    document.getElementById("vd").textContent = diff.getUTCDate() - 1
+    document.getElementById("vh").textContent = diff.getUTCHours()
+    document.getElementById("vmi").textContent = diff.getUTCMinutes()
+    document.getElementById("vs").textContent = diff.getUTCSeconds()
+    document.getElementById("vms").textContent = diff.getUTCMilliseconds().toString().padStart(3,"0")
+
+    timer = requestAnimationFrame(tick)
+  }
+
+  timer = requestAnimationFrame(tick)
+}
+
+document.getElementById("start").onclick=()=>{
+  err.textContent=""
+  let target
+  try{target=buildDate()}catch(e){err.textContent=e;return}
+
+  let name=title.value.trim()
+  let file=bgInput.files[0]
+
+  if(file){
+    let r=new FileReader()
+    r.onload=e=>{
+      let bgData=e.target.result
+      let url=encodeURL(target.toISOString(),bgData,name)
+      history.replaceState(null,"",url)
+      showCountdown(target,bgData,name)
+    }
+    r.readAsDataURL(file)
+  } else {
+    let url=encodeURL(target.toISOString(),"",name)
+    history.replaceState(null,"",url)
+    showCountdown(target,"",name)
+  }
+}
+
+document.getElementById("copy").onclick=()=>navigator.clipboard.writeText(location.href)
+document.getElementById("new").onclick=()=>{history.replaceState(null,"",location.pathname);location.reload()}
+
+window.addEventListener("DOMContentLoaded",()=>{
+  let p=new URLSearchParams(location.search)
+  if(p.has("t")){
+    let t=new Date(p.get("t"))
+    let bgData=p.get("bg")||""
+    let name=p.get("name")||"Countdown"
+    if(bgData) bgLayer.style.backgroundImage="url('"+bgData+"')"
+    showCountdown(t,bgData,name)
+  }
+})
+</script>
+</body>
+</html>
