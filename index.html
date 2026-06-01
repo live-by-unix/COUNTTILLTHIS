@@ -1,459 +1,183 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
 <title>CountTillThis</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/23f0.svg">
 
 <style>
-:root{
-  --bg-light:#f2f2f2;
-  --bg-dark:#111;
-  --text-light:#111;
-  --text-dark:#fff;
-  --card-light:rgba(255,255,255,0.9);
-  --card-dark:rgba(0,0,0,0.85);
-  --border-light:rgba(0,0,0,0.1);
-  --border-dark:rgba(255,255,255,0.15);
-  --accent:#3b82f6;
-}
-*{box-sizing:border-box;}
-body{
+body {
   margin:0;
-  font-family:system-ui,-apple-system,Segoe UI,sans-serif;
-  background:var(--bg-light);
-  color:var(--text-light);
-  min-height:100vh;
-  transition:.2s;
-  position:relative;
-  overflow-x:hidden;
+  font-family:system-ui;
+  background:#111;
+  color:white;
+  overflow:hidden;
 }
-body.dark{
-  background:var(--bg-dark);
-  color:var(--text-dark);
-}
-body.dark *{
-  color:#fff!important;
-  text-shadow:0 0 6px rgba(0,0,0,0.9);
-}
-
-/* Background layers */
-.bg-container{
+.bg {
   position:fixed;
   inset:0;
-  overflow:hidden;
-  z-index:0;
+  z-index:-1;
+  background-size:cover;
+  background-position:center;
 }
-#bgImageLayer{
-  position:absolute;
-  inset:0;
-  background:#777 center/cover no-repeat;
-  will-change:background-position;
-}
-#bgVideoLayer{
-  position:absolute;
-  inset:0;
+video.bg {
   object-fit:cover;
   width:100%;
   height:100%;
-  display:none;
-  will-change:transform;
 }
-.blur-overlay{
-  position:absolute;
-  inset:0;
-  background:rgba(0,0,0,0.25);
-  backdrop-filter:blur(12px);
-  pointer-events:none;
-  opacity:0;
-  transition:opacity .2s;
-}
-body.blur-active .blur-overlay{
-  opacity:1;
-}
-
-/* Foreground */
-.wrap{
-  max-width:900px;
-  margin:0 auto;
-  padding:20px;
-  position:relative;
-  z-index:2;
-}
-.top{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom:20px;
-}
-.toggle{
-  padding:6px 12px;
-  border-radius:20px;
-  border:1px solid var(--border-light);
-  cursor:pointer;
-  font-size:13px;
-  background:rgba(255,255,255,0.7);
-  transition:.15s;
-}
-.toggle:hover{transform:scale(1.05);}
-.toggle:active{transform:scale(0.95);}
-body.dark .toggle{
-  border-color:var(--border-dark);
-  background:rgba(0,0,0,0.6);
-}
-.card{
-  background:var(--card-light);
-  border:1px solid var(--border-light);
-  border-radius:16px;
-  padding:20px;
+.blur {
   backdrop-filter:blur(12px);
 }
-body.dark .card{
-  background:var(--card-dark);
-  border-color:var(--border-dark);
+.card {
+  background:rgba(0,0,0,0.5);
+  padding:20px;
+  border-radius:12px;
+  max-width:600px;
+  margin:20px auto;
 }
-.grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:20px;
-}
-@media(max-width:700px){
-  .grid{grid-template-columns:1fr;}
-}
-.field label{
-  font-size:12px;
-  opacity:.7;
-}
-.field input{
-  width:100%;
-  padding:8px;
-  border-radius:10px;
-  border:1px solid var(--border-light);
-  background:rgba(255,255,255,0.9);
-  margin-top:4px;
-}
-body.dark .field input{
-  background:rgba(0,0,0,0.4);
-  border-color:var(--border-dark);
-}
-.field-inline{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  margin-top:8px;
-  font-size:12px;
-}
-.btn{
-  padding:10px 18px;
-  border-radius:20px;
-  border:none;
-  background:var(--accent);
-  color:#fff;
-  cursor:pointer;
-  font-size:14px;
-  transition:.15s;
-}
-.btn:hover{transform:scale(1.05);}
-.btn:active{transform:scale(0.95);}
-.countgrid{
-  width:100%;
+.hidden { display:none; }
+.grid {
   display:grid;
   grid-template-columns:repeat(4,1fr);
-  gap:12px;
+  gap:10px;
 }
-@media(max-width:700px){
-  .countgrid{grid-template-columns:repeat(2,1fr);}
-}
-.block{
-  text-align:center;
-  padding:12px;
-  border-radius:14px;
-  border:1px solid var(--border-light);
-  background:rgba(0,0,0,0.05);
-}
-body.dark .block{
-  background:rgba(255,255,255,0.05);
-  border-color:var(--border-dark);
-}
-.label{
-  font-size:11px;
-  opacity:.7;
-}
-.val{
-  font-size:24px;
-  font-weight:600;
-}
-.hidden{display:none;}
-.copybtn{
-  padding:8px 14px;
-  border-radius:20px;
-  border:1px solid var(--border-light);
-  background:transparent;
-  cursor:pointer;
-  font-size:13px;
-  transition:.15s;
-  margin-top:10px;
-  margin-right:6px;
-}
-.copybtn:hover{transform:scale(1.05);}
-.copybtn:active{transform:scale(0.95);}
-body.dark .copybtn{
-  border-color:var(--border-dark);
-}
-.progress-wrap{
-  width:100%;
-  height:10px;
-  background:rgba(0,0,0,0.15);
-  border-radius:10px;
-  margin-top:20px;
-  overflow:hidden;
-}
-body.dark .progress-wrap{
-  background:rgba(255,255,255,0.2);
-}
-.progress-bar{
-  height:100%;
-  width:0%;
-  background:var(--accent);
-  transition:width .05s linear;
-}
-.small-note{
-  font-size:11px;
-  opacity:.7;
-  margin-top:6px;
-}
+.val { font-size:32px; font-weight:700; }
 </style>
 </head>
 
 <body>
-<div class="bg-container">
-  <div id="bgImageLayer"></div>
-  <video id="bgVideoLayer" autoplay muted loop playsinline></video>
-  <div class="blur-overlay"></div>
+
+<div id="bgImage" class="bg"></div>
+<video id="bgVideo" class="bg" autoplay muted loop playsinline></video>
+
+<div id="builder" class="card">
+  <h2>Create Countdown</h2>
+  <label>Name <input id="name"></label><br><br>
+  <label>Year <input id="y"></label><br>
+  <label>Month <input id="mo"></label><br>
+  <label>Day <input id="d"></label><br>
+  <label>Hour <input id="h"></label><br>
+  <label>Minute <input id="mi"></label><br>
+  <label>Second <input id="s"></label><br>
+  <label>Milliseconds <input id="ms"></label><br><br>
+
+  <label>Background <input type="file" id="bgFile" accept="image/*,video/*"></label><br><br>
+
+  <label><input type="checkbox" id="blur"> Blur overlay</label><br><br>
+
+  <button id="start">Start</button>
 </div>
 
-<div class="wrap">
-  <div class="top">
-    <div style="font-weight:700;letter-spacing:.08em;">COUNTTILLTHIS</div>
-    <div class="toggle" id="modeToggle">🌙 Dark</div>
+<div id="count" class="card hidden">
+  <h2 id="ctitle"></h2>
+  <h3 id="target"></h3>
+
+  <div class="grid">
+    <div><div class="val" id="vy">0</div>Years</div>
+    <div><div class="val" id="vmo">0</div>Months</div>
+    <div><div class="val" id="vd">0</div>Days</div>
+    <div><div class="val" id="vh">0</div>Hours</div>
+    <div><div class="val" id="vmi">0</div>Minutes</div>
+    <div><div class="val" id="vs">0</div>Seconds</div>
+    <div><div class="val" id="vms">000</div>MS</div>
   </div>
 
-  <div class="card" id="builder">
-    <h2>Create a countdown</h2>
-    <div class="grid">
-      <div>
-        <div class="field"><label>Countdown name</label><input id="title"></div>
-        <div class="field"><label>Year</label><input id="y"></div>
-        <div class="field"><label>Month</label><input id="mo"></div>
-        <div class="field"><label>Day</label><input id="d"></div>
-        <div class="field"><label>Hour</label><input id="h"></div>
-        <div class="field"><label>Minute</label><input id="mi"></div>
-        <div class="field"><label>Second</label><input id="s"></div>
-        <div class="field"><label>Milliseconds *</label><input id="ms" required></div>
-      </div>
-      <div>
-        <div class="field">
-          <label>Background (image / animated image / video)</label>
-          <input type="file" id="bgFile" accept="image/*,video/*">
-        </div>
-        <div class="field-inline">
-          <input type="checkbox" id="blurToggle">
-          <label for="blurToggle">Enable blur overlay</label>
-        </div>
-        <div class="small-note">1 background only. Stored in URL using chunking.</div>
-        <button class="btn" id="start">Start timer</button>
-        <div id="err" style="color:#f66;font-size:12px;margin-top:8px;"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card hidden" id="countview">
-    <h2 id="ctitle"></h2>
-    <h3 id="target"></h3>
-
-    <div class="countgrid">
-      <div class="block"><div class="label">Years</div><div class="val" id="vy">0</div></div>
-      <div class="block"><div class="label">Months</div><div class="val" id="vmo">0</div></div>
-      <div class="block"><div class="label">Days</div><div class="val" id="vd">0</div></div>
-      <div class="block"><div class="label">Hours</div><div class="val" id="vh">0</div></div>
-      <div class="block"><div class="label">Minutes</div><div class="val" id="vmi">0</div></div>
-      <div class="block"><div class="label">Seconds</div><div class="val" id="vs">0</div></div>
-      <div class="block"><div class="label">Milliseconds</div><div class="val" id="vms">000</div></div>
-      <div class="block"><div class="label">Status</div><div class="val" id="stat">Running</div></div>
-    </div>
-
-    <div class="progress-wrap">
-      <div class="progress-bar" id="progress"></div>
-    </div>
-
-    <div>
-      <button class="copybtn" id="copy">Copy URL</button>
-      <button class="copybtn" id="new">New timer</button>
-    </div>
-  </div>
+  <button onclick="navigator.clipboard.writeText(location.href)">Copy URL</button>
+  <button onclick="location.href='/'">New</button>
 </div>
 
 <script>
-/* Theme toggle */
-const modeToggle=document.getElementById("modeToggle");
-modeToggle.onclick=()=>{
-  document.body.classList.toggle("dark");
-  modeToggle.textContent=document.body.classList.contains("dark")?"☀️ Light":"🌙 Dark";
+function loadBackgroundFromHash() {
+  const hash = location.hash.slice(1);
+  if (!hash.startsWith("BG:")) return;
+
+  const data = hash.slice(3);
+
+  if (data.startsWith("data:video/")) {
+    bgVideo.src = data;
+    bgVideo.style.display = "block";
+    bgImage.style.display = "none";
+  } else {
+    bgImage.style.backgroundImage = `url(${data})`;
+    bgImage.style.display = "block";
+    bgVideo.style.display = "none";
+  }
+}
+
+function startCountdown(target) {
+  function tick() {
+    const now = Date.now();
+    let diff = target - now;
+    if (diff < 0) diff = 0;
+
+    const d = new Date(diff);
+    vy.textContent = d.getUTCFullYear() - 1970;
+    vmo.textContent = d.getUTCMonth();
+    vd.textContent = d.getUTCDate() - 1;
+    vh.textContent = d.getUTCHours();
+    vmi.textContent = d.getUTCMinutes();
+    vs.textContent = d.getUTCSeconds();
+    vms.textContent = d.getUTCMilliseconds().toString().padStart(3,"0");
+
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+start.onclick = () => {
+  const Y = +y.value;
+  const M = +mo.value - 1;
+  const D = +d.value;
+  const H = +h.value;
+  const MI = +mi.value;
+  const S = +s.value;
+  const MS = +ms.value;
+
+  const target = new Date(Y,M,D,H,MI,S,MS);
+
+  const nameVal = name.value;
+  const blurVal = blur.checked ? "1" : "0";
+
+  const file = bgFile.files[0];
+  if (file) {
+    const r = new FileReader();
+    r.onload = e => {
+      const data = e.target.result;
+      const url = new URL(location.href);
+      url.search = "";
+      url.searchParams.set("t", target.toISOString());
+      url.searchParams.set("name", nameVal);
+      url.searchParams.set("blur", blurVal);
+      location.href = url.toString() + "#BG:" + data;
+    };
+    r.readAsDataURL(file);
+  } else {
+    const url = new URL(location.href);
+    url.search = "";
+    url.searchParams.set("t", target.toISOString());
+    url.searchParams.set("name", nameVal);
+    url.searchParams.set("blur", blurVal);
+    location.href = url.toString();
+  }
 };
 
-/* Elements */
-const y=document.getElementById("y"),
-      mo=document.getElementById("mo"),
-      d=document.getElementById("d"),
-      h=document.getElementById("h"),
-      mi=document.getElementById("mi"),
-      s=document.getElementById("s"),
-      ms=document.getElementById("ms"),
-      title=document.getElementById("title"),
-      bgFile=document.getElementById("bgFile"),
-      blurToggle=document.getElementById("blurToggle"),
-      bgImageLayer=document.getElementById("bgImageLayer"),
-      bgVideoLayer=document.getElementById("bgVideoLayer"),
-      builder=document.getElementById("builder"),
-      countview=document.getElementById("countview"),
-      progress=document.getElementById("progress"),
-      err=document.getElementById("err");
+window.onload = () => {
+  const p = new URLSearchParams(location.search);
+  if (!p.has("t")) return;
 
-let timer=null;
-let targetTime=0;
-let totalDuration=0;
-
-/* Helpers */
-function gi(v){
-  const n=parseInt(v.value);
-  return isNaN(n)?null:n;
-}
-
-function buildDate(){
-  const n=new Date();
-  const Y=gi(y)??n.getFullYear();
-  const M=gi(mo)??(n.getMonth()+1);
-  const D=gi(d)??n.getDate();
-  const H=gi(h)??n.getHours();
-  const MI=gi(mi)??n.getMinutes();
-  const S=gi(s)??n.getSeconds();
-  const MS=gi(ms);
-  if(MS===null) throw "Milliseconds required";
-  return new Date(Y,M-1,D,H,MI,S,MS);
-}
-
-/* Chunking */
-const CHUNK_SIZE=1500;
-
-function encodeBackgroundToParams(url, data){
-  for(const key of Array.from(url.searchParams.keys())){
-    if(/^bg\d+$/.test(key)) url.searchParams.delete(key);
-  }
-  if(!data) return;
-  for(let i=0;i<data.length;i+=CHUNK_SIZE){
-    const chunk=data.slice(i,i+CHUNK_SIZE);
-    url.searchParams.set("bg"+(i/CHUNK_SIZE), encodeURIComponent(chunk));
-  }
-}
-
-function decodeBackgroundFromParams(params){
-  const chunks=[];
-  const keys=[];
-  for(const [k,v] of params.entries()){
-    if(/^bg\d+$/.test(k)){
-      const idx=parseInt(k.slice(2),10);
-      if(!isNaN(idx)) keys.push({idx,v});
-    }
-  }
-  keys.sort((a,b)=>a.idx-b.idx);
-  for(const item of keys){
-    try{
-      chunks.push(decodeURIComponent(item.v));
-    }catch(e){}
-  }
-  return chunks.join("");
-}
-
-/* Apply background */
-function applyBackground(data){
-  if(!data){
-    bgImageLayer.style.backgroundImage="none";
-    bgVideoLayer.style.display="none";
-    bgVideoLayer.removeAttribute("src");
-    bgVideoLayer.load();
-    return;
-  }
-  if(data.startsWith("data:video/")){
-    bgImageLayer.style.backgroundImage="none";
-    bgVideoLayer.style.display="block";
-    bgVideoLayer.src=data;
-    bgVideoLayer.load();
-    bgVideoLayer.play().catch(()=>{});
-  }else{
-    bgVideoLayer.style.display="none";
-    bgVideoLayer.removeAttribute("src");
-    bgVideoLayer.load();
-    bgImageLayer.style.backgroundImage="url('"+data+"')";
-  }
-}
-
-/* Parallax */
-(function setupParallax(){
-  let cx=window.innerWidth/2;
-  let cy=window.innerHeight/2;
-  window.addEventListener("resize",()=>{
-    cx=window.innerWidth/2;
-    cy=window.innerHeight/2;
-  });
-  window.addEventListener("mousemove",(e)=>{
-    const dx=(e.clientX-cx)/cx;
-    const dy=(e.clientY-cy)/cy;
-    bgImageLayer.style.backgroundPosition=(50+dx*5)+"% "+(50+dy*5)+"%";
-    bgVideoLayer.style.transform="translate("+(dx*10)+"px,"+(dy*10)+"px) scale(1.03)";
-  });
-})();
-
-/* Countdown */
-function showCountdown(target, bgData, name, blurFlag){
   builder.classList.add("hidden");
-  countview.classList.remove("hidden");
+  count.classList.remove("hidden");
 
-  if(blurFlag==="1") document.body.classList.add("blur-active");
-  else document.body.classList.remove("blur-active");
+  const target = new Date(p.get("t"));
+  ctitle.textContent = p.get("name");
+  targetEl.textContent = target.toLocaleString();
 
-  if(bgData) applyBackground(bgData);
+  if (p.get("blur") === "1") document.body.classList.add("blur");
 
-  document.getElementById("ctitle").textContent=name||"Countdown";
-  document.getElementById("target").textContent="To "+target.toLocaleString();
+  loadBackgroundFromHash();
+  startCountdown(target);
+};
+</script>
 
-  targetTime=target.getTime();
-  totalDuration=targetTime - Date.now();
-
-  function tick(){
-    const remaining=targetTime - Date.now();
-    if(remaining<=0){
-      cancelAnimationFrame(timer);
-      progress.style.width="100%";
-      document.getElementById("vy").textContent="0";
-      document.getElementById("vmo").textContent="0";
-      document.getElementById("vd").textContent="0";
-      document.getElementById("vh").textContent="0";
-      document.getElementById("vmi").textContent="0";
-      document.getElementById("vs").textContent="0";
-      document.getElementById("vms").textContent="000";
-      document.getElementById("stat").textContent="Arrived";
-      return;
-    }
-
-    const diff=new Date(remaining);
-    document.getElementById("vy").textContent=diff.getUTCFullYear()-1970;
-    document.getElementById("vmo").textContent=diff.getUTCMonth();
-    document.getElementById("vd").textContent=diff.getUTCDate()-1;
-    document.getElementById("vh").textContent=diff.getUTCHours();
-    document.getElementById("vmi").textContent=diff.getUTCMinutes();
-    document.getElementById("vs").textContent=diff.getUTCSeconds();
-    document.getElementById("vms").textContent=diff.getUTCMilliseconds().toString().padStart(3,"0");
-
-    let progressPercent=((totalDuration-remaining)/totalDuration)*100;
-    if(progressPercent<0) progressPercent=
+</body>
+</html>
