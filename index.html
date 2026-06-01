@@ -1,18 +1,23 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <title>CountTillThis</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
+<!-- CUSTOM FONTS -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+
 <style>
 body {
   margin:0;
-  font-family:system-ui;
+  font-family:'Inter', sans-serif;
   background:#111;
   color:white;
   overflow:hidden;
 }
+
+/* Background layers */
 .bg {
   position:fixed;
   inset:0;
@@ -28,6 +33,8 @@ video.bg {
 .blur {
   backdrop-filter:blur(12px);
 }
+
+/* UI */
 .card {
   background:rgba(0,0,0,0.5);
   padding:20px;
@@ -36,23 +43,35 @@ video.bg {
   margin:20px auto;
 }
 .hidden { display:none; }
+
 .grid {
   display:grid;
   grid-template-columns:repeat(4,1fr);
   gap:10px;
 }
-.val { font-size:32px; font-weight:700; }
+.val {
+  font-size:32px;
+  font-weight:700;
+  font-family:'Space Grotesk', sans-serif;
+}
+h2, h3 {
+  font-family:'Space Grotesk', sans-serif;
+}
 </style>
 </head>
 
 <body>
 
+<!-- Background layers -->
 <div id="bgImage" class="bg"></div>
 <video id="bgVideo" class="bg" autoplay muted loop playsinline></video>
 
+<!-- Builder -->
 <div id="builder" class="card">
   <h2>Create Countdown</h2>
+
   <label>Name <input id="name"></label><br><br>
+
   <label>Year <input id="y"></label><br>
   <label>Month <input id="mo"></label><br>
   <label>Day <input id="d"></label><br>
@@ -68,9 +87,10 @@ video.bg {
   <button id="start">Start</button>
 </div>
 
+<!-- Countdown -->
 <div id="count" class="card hidden">
   <h2 id="ctitle"></h2>
-  <h3 id="target"></h3>
+  <h3 id="targetText"></h3>
 
   <div class="grid">
     <div><div class="val" id="vy">0</div>Years</div>
@@ -87,6 +107,7 @@ video.bg {
 </div>
 
 <script>
+/* Load background from URL hash */
 function loadBackgroundFromHash() {
   const hash = location.hash.slice(1);
   if (!hash.startsWith("BG:")) return;
@@ -104,6 +125,7 @@ function loadBackgroundFromHash() {
   }
 }
 
+/* Countdown logic */
 function startCountdown(target) {
   function tick() {
     const now = Date.now();
@@ -124,6 +146,7 @@ function startCountdown(target) {
   tick();
 }
 
+/* Start button */
 start.onclick = () => {
   const Y = +y.value;
   const M = +mo.value - 1;
@@ -135,19 +158,22 @@ start.onclick = () => {
 
   const target = new Date(Y,M,D,H,MI,S,MS);
 
-  const nameVal = name.value;
+  const nameVal = name.value || "";
   const blurVal = blur.checked ? "1" : "0";
 
   const file = bgFile.files[0];
+
   if (file) {
     const r = new FileReader();
     r.onload = e => {
       const data = e.target.result;
+
       const url = new URL(location.href);
       url.search = "";
       url.searchParams.set("t", target.toISOString());
       url.searchParams.set("name", nameVal);
       url.searchParams.set("blur", blurVal);
+
       location.href = url.toString() + "#BG:" + data;
     };
     r.readAsDataURL(file);
@@ -157,10 +183,12 @@ start.onclick = () => {
     url.searchParams.set("t", target.toISOString());
     url.searchParams.set("name", nameVal);
     url.searchParams.set("blur", blurVal);
+
     location.href = url.toString();
   }
 };
 
+/* Load from URL */
 window.onload = () => {
   const p = new URLSearchParams(location.search);
   if (!p.has("t")) return;
@@ -169,8 +197,8 @@ window.onload = () => {
   count.classList.remove("hidden");
 
   const target = new Date(p.get("t"));
-  ctitle.textContent = p.get("name");
-  targetEl.textContent = target.toLocaleString();
+  ctitle.textContent = p.get("name") || "";
+  targetText.textContent = target.toLocaleString();
 
   if (p.get("blur") === "1") document.body.classList.add("blur");
 
