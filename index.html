@@ -9,12 +9,27 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 
 <style>
+/* THEME VARIABLES */
+:root {
+  --bg: #f2f2f2;
+  --text: #111;
+  --card: rgba(255,255,255,0.9);
+  --border: rgba(0,0,0,0.1);
+}
+:root.dark {
+  --bg: #111;
+  --text: #fff;
+  --card: rgba(0,0,0,0.85);
+  --border: rgba(255,255,255,0.15);
+}
+
 body {
   margin:0;
   font-family:'Inter', sans-serif;
-  background:#111;
-  color:white;
+  background:var(--bg);
+  color:var(--text);
   overflow:hidden;
+  transition:background .2s, color .2s;
 }
 
 /* Background layers */
@@ -36,11 +51,13 @@ video.bg {
 
 /* UI */
 .card {
-  background:rgba(0,0,0,0.5);
+  background:var(--card);
   padding:20px;
   border-radius:12px;
   max-width:600px;
   margin:20px auto;
+  border:1px solid var(--border);
+  backdrop-filter:blur(12px);
 }
 .hidden { display:none; }
 
@@ -57,6 +74,16 @@ video.bg {
 h2, h3 {
   font-family:'Space Grotesk', sans-serif;
 }
+
+.toggle {
+  cursor:pointer;
+  padding:6px 12px;
+  border-radius:20px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,0.3);
+  display:inline-block;
+  margin-bottom:10px;
+}
 </style>
 </head>
 
@@ -68,6 +95,8 @@ h2, h3 {
 
 <!-- Builder -->
 <div id="builder" class="card">
+  <div class="toggle" id="themeToggle">🌓 Theme</div>
+
   <h2>Create Countdown</h2>
 
   <label>Name <input id="name"></label><br><br>
@@ -89,6 +118,8 @@ h2, h3 {
 
 <!-- Countdown -->
 <div id="count" class="card hidden">
+  <div class="toggle" id="themeToggle2">🌓 Theme</div>
+
   <h2 id="ctitle"></h2>
   <h3 id="targetText"></h3>
 
@@ -107,7 +138,40 @@ h2, h3 {
 </div>
 
 <script>
-/* Load background from URL hash */
+/* THEME SYSTEM: OS DEFAULT + USER OVERRIDE */
+function applyTheme(theme) {
+  if (theme === "dark") document.documentElement.classList.add("dark");
+  else document.documentElement.classList.remove("dark");
+}
+
+function detectOSTheme() {
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function loadTheme() {
+  const p = new URLSearchParams(location.search);
+  const override = p.get("theme");
+
+  if (override === "dark" || override === "light") {
+    applyTheme(override);
+    return override;
+  }
+
+  const os = detectOSTheme();
+  applyTheme(os);
+  return os;
+}
+
+function toggleTheme() {
+  const current = document.documentElement.classList.contains("dark") ? "dark" : "light";
+  const next = current === "dark" ? "light" : "dark";
+
+  const url = new URL(location.href);
+  url.searchParams.set("theme", next);
+  location.href = url.toString();
+}
+
+/* Background from URL hash */
 function loadBackgroundFromHash() {
   const hash = location.hash.slice(1);
   if (!hash.startsWith("BG:")) return;
@@ -174,6 +238,9 @@ start.onclick = () => {
       url.searchParams.set("name", nameVal);
       url.searchParams.set("blur", blurVal);
 
+      const currentTheme = document.documentElement.classList.contains("dark") ? "dark" : "light";
+      url.searchParams.set("theme", currentTheme);
+
       location.href = url.toString() + "#BG:" + data;
     };
     r.readAsDataURL(file);
@@ -184,12 +251,20 @@ start.onclick = () => {
     url.searchParams.set("name", nameVal);
     url.searchParams.set("blur", blurVal);
 
+    const currentTheme = document.documentElement.classList.contains("dark") ? "dark" : "light";
+    url.searchParams.set("theme", currentTheme);
+
     location.href = url.toString();
   }
 };
 
 /* Load from URL */
 window.onload = () => {
+  const theme = loadTheme();
+
+  themeToggle.onclick = toggleTheme;
+  themeToggle2.onclick = toggleTheme;
+
   const p = new URLSearchParams(location.search);
   if (!p.has("t")) return;
 
