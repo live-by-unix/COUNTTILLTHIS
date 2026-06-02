@@ -1,286 +1,69 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>CountTillThis</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-
-<!-- CUSTOM FONTS -->
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
-
-<style>
-/* THEME VARIABLES */
-:root {
-  --bg: #f2f2f2;
-  --text: #111;
-  --card: rgba(255,255,255,0.9);
-  --border: rgba(0,0,0,0.1);
-}
-:root.dark {
-  --bg: #111;
-  --text: #fff;
-  --card: rgba(0,0,0,0.85);
-  --border: rgba(255,255,255,0.15);
-}
-
-body {
-  margin:0;
-  font-family:'Inter', sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  overflow:hidden;
-  transition:background .2s, color .2s;
-}
-
-/* Background layers */
-.bg {
-  position:fixed;
-  inset:0;
-  z-index:-1;
-  background-size:cover;
-  background-position:center;
-}
-video.bg {
-  object-fit:cover;
-  width:100%;
-  height:100%;
-}
-.blur {
-  backdrop-filter:blur(12px);
-}
-
-/* UI */
-.card {
-  background:var(--card);
-  padding:20px;
-  border-radius:12px;
-  max-width:600px;
-  margin:20px auto;
-  border:1px solid var(--border);
-  backdrop-filter:blur(12px);
-}
-.hidden { display:none; }
-
-.grid {
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:10px;
-}
-.val {
-  font-size:32px;
-  font-weight:700;
-  font-family:'Space Grotesk', sans-serif;
-}
-h2, h3 {
-  font-family:'Space Grotesk', sans-serif;
-}
-
-.toggle {
-  cursor:pointer;
-  padding:6px 12px;
-  border-radius:20px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,0.3);
-  display:inline-block;
-  margin-bottom:10px;
-}
-</style>
-</head>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>CountTillThis</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/23f0.svg"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet"><style>
+:root{--bg:#f2f2f2;--text:#111;--card:rgba(255,255,255,.9);--border:rgba(0,0,0,.1);}
+:root.dark{--bg:#111;--text:#fff;--card:rgba(0,0,0,.85);--border:rgba(255,255,255,.15);}
+body{margin:0;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;transition:.2s;}
+.bg{position:fixed;inset:0;z-index:-1;background-size:cover;background-position:center;}
+video.bg{object-fit:cover;width:100%;height:100%;}
+.blur{backdrop-filter:blur(12px);}
+.card{background:var(--card);padding:20px;border-radius:12px;max-width:600px;margin:20px auto;border:1px solid var(--border);backdrop-filter:blur(12px);}
+.hidden{display:none;}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.val{font-size:32px;font-weight:700;font-family:'Space Grotesk',sans-serif;}
+h2,h3{font-family:'Space Grotesk',sans-serif;}
+.toggle{cursor:pointer;padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:rgba(255,255,255,.3);display:inline-block;margin-bottom:10px;}
+</style></head>
 
 <body>
-
-<!-- Background layers -->
 <div id="bgImage" class="bg"></div>
 <video id="bgVideo" class="bg" autoplay muted loop playsinline></video>
 
-<!-- Builder -->
 <div id="builder" class="card">
-  <div class="toggle" id="themeToggle">🌓 Theme</div>
-
-  <h2>Create Countdown</h2>
-
-  <label>Name <input id="name"></label><br><br>
-
-  <label>Year <input id="y"></label><br>
-  <label>Month <input id="mo"></label><br>
-  <label>Day <input id="d"></label><br>
-  <label>Hour <input id="h"></label><br>
-  <label>Minute <input id="mi"></label><br>
-  <label>Second <input id="s"></label><br>
-  <label>Milliseconds <input id="ms"></label><br><br>
-
-  <label>Background <input type="file" id="bgFile" accept="image/*,video/*"></label><br><br>
-
-  <label><input type="checkbox" id="blur"> Blur overlay</label><br><br>
-
-  <button id="start">Start</button>
+<div class="toggle" id="themeToggle">🌓 Theme</div>
+<h2>Create Countdown</h2>
+<label>Name <input id="name"></label><br><br>
+<label>Year <input id="y"></label><br>
+<label>Month <input id="mo"></label><br>
+<label>Day <input id="d"></label><br>
+<label>Hour <input id="h"></label><br>
+<label>Minute <input id="mi"></label><br>
+<label>Second <input id="s"></label><br>
+<label>Milliseconds <input id="ms"></label><br><br>
+<label>Background <input type="file" id="bgFile" accept="image/*,video/*"></label><br><br>
+<label><input type="checkbox" id="blur"> Blur overlay</label><br><br>
+<button id="start">Start</button>
 </div>
 
-<!-- Countdown -->
 <div id="count" class="card hidden">
-  <div class="toggle" id="themeToggle2">🌓 Theme</div>
-
-  <h2 id="ctitle"></h2>
-  <h3 id="targetText"></h3>
-
-  <div class="grid">
-    <div><div class="val" id="vy">0</div>Years</div>
-    <div><div class="val" id="vmo">0</div>Months</div>
-    <div><div class="val" id="vd">0</div>Days</div>
-    <div><div class="val" id="vh">0</div>Hours</div>
-    <div><div class="val" id="vmi">0</div>Minutes</div>
-    <div><div class="val" id="vs">0</div>Seconds</div>
-    <div><div class="val" id="vms">000</div>MS</div>
-  </div>
-
-  <button onclick="navigator.clipboard.writeText(location.href)">Copy URL</button>
-  <button onclick="location.href='/'">New</button>
+<div class="toggle" id="themeToggle2">🌓 Theme</div>
+<h2 id="ctitle"></h2>
+<h3 id="targetText"></h3>
+<div class="grid">
+<div><div class="val" id="vy">0</div>Years</div>
+<div><div class="val" id="vmo">0</div>Months</div>
+<div><div class="val" id="vd">0</div>Days</div>
+<div><div class="val" id="vh">0</div>Hours</div>
+<div><div class="val" id="vmi">0</div>Minutes</div>
+<div><div class="val" id="vs">0</div>Seconds</div>
+<div><div class="val" id="vms">000</div>MS</div>
+</div>
+<button onclick="navigator.clipboard.writeText(location.href)">Copy URL</button>
+<button onclick="location.href='/'">New</button>
 </div>
 
 <script>
-/* THEME SYSTEM: OS DEFAULT + USER OVERRIDE */
-function applyTheme(theme) {
-  if (theme === "dark") document.documentElement.classList.add("dark");
-  else document.documentElement.classList.remove("dark");
-}
+function applyTheme(t){t==="dark"?document.documentElement.classList.add("dark"):document.documentElement.classList.remove("dark");}
+function detectOS(){return matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}
+function loadTheme(){const p=new URLSearchParams(location.search);const o=p.get("theme");if(o){applyTheme(o);return o;}const os=detectOS();applyTheme(os);return os;}
+function toggleTheme(){const c=document.documentElement.classList.contains("dark")?"dark":"light";const n=c==="dark"?"light":"dark";const u=new URL(location.href);u.searchParams.set("theme",n);location.replace(u.toString());}
 
-function detectOSTheme() {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
+function loadBG(){const h=location.hash.slice(1);if(!h.startsWith("BG:"))return;const d=h.slice(3);if(d.startsWith("data:video/")){bgVideo.src=d;bgVideo.style.display="block";bgImage.style.display="none";}else{bgImage.style.backgroundImage=`url(${d})`;bgImage.style.display="block";bgVideo.style.display="none";}}
 
-function loadTheme() {
-  const p = new URLSearchParams(location.search);
-  const override = p.get("theme");
+function startCountdown(t){function tick(){let diff=t-Date.now();if(diff<0)diff=0;const d=new Date(diff);vy.textContent=d.getUTCFullYear()-1970;vmo.textContent=d.getUTCMonth();vd.textContent=d.getUTCDate()-1;vh.textContent=d.getUTCHours();vmi.textContent=d.getUTCMinutes();vs.textContent=d.getUTCSeconds();vms.textContent=d.getUTCMilliseconds().toString().padStart(3,"0");requestAnimationFrame(tick);}tick();}
 
-  if (override === "dark" || override === "light") {
-    applyTheme(override);
-    return override;
-  }
+window.onmousemove=e=>{const x=(e.clientX-innerWidth/2)/(innerWidth/2);const y=(e.clientY-innerHeight/2)/(innerHeight/2);bgImage.style.backgroundPosition=`${50+x*5}% ${50+y*5}%`;bgVideo.style.transform=`translate(${x*10}px,${y*10}px) scale(1.03)`;}
 
-  const os = detectOSTheme();
-  applyTheme(os);
-  return os;
-}
+start.onclick=()=>{const t=new Date(+y.value,+mo.value-1,+d.value,+h.value,+mi.value,+s.value,+ms.value);const n=name.value||"";const b=blur.checked?"1":"0";const f=bgFile.files[0];if(f){const r=new FileReader();r.onload=e=>{const data=e.target.result;const u=new URL(location.href);u.search="";u.searchParams.set("t",t.toISOString());u.searchParams.set("name",n);u.searchParams.set("blur",b);u.searchParams.set("theme",document.documentElement.classList.contains("dark")?"dark":"light");location.replace(u.toString()+"#BG:"+data);};r.readAsDataURL(f);}else{const u=new URL(location.href);u.search="";u.searchParams.set("t",t.toISOString());u.searchParams.set("name",n);u.searchParams.set("blur",b);u.searchParams.set("theme",document.documentElement.classList.contains("dark")?"dark":"light");location.replace(u.toString());}}
 
-function toggleTheme() {
-  const current = document.documentElement.classList.contains("dark") ? "dark" : "light";
-  const next = current === "dark" ? "light" : "dark";
-
-  const url = new URL(location.href);
-  url.searchParams.set("theme", next);
-  location.href = url.toString();
-}
-
-/* Background from URL hash */
-function loadBackgroundFromHash() {
-  const hash = location.hash.slice(1);
-  if (!hash.startsWith("BG:")) return;
-
-  const data = hash.slice(3);
-
-  if (data.startsWith("data:video/")) {
-    bgVideo.src = data;
-    bgVideo.style.display = "block";
-    bgImage.style.display = "none";
-  } else {
-    bgImage.style.backgroundImage = `url(${data})`;
-    bgImage.style.display = "block";
-    bgVideo.style.display = "none";
-  }
-}
-
-/* Countdown logic */
-function startCountdown(target) {
-  function tick() {
-    const now = Date.now();
-    let diff = target - now;
-    if (diff < 0) diff = 0;
-
-    const d = new Date(diff);
-    vy.textContent = d.getUTCFullYear() - 1970;
-    vmo.textContent = d.getUTCMonth();
-    vd.textContent = d.getUTCDate() - 1;
-    vh.textContent = d.getUTCHours();
-    vmi.textContent = d.getUTCMinutes();
-    vs.textContent = d.getUTCSeconds();
-    vms.textContent = d.getUTCMilliseconds().toString().padStart(3,"0");
-
-    requestAnimationFrame(tick);
-  }
-  tick();
-}
-
-/* Start button */
-start.onclick = () => {
-  const Y = +y.value;
-  const M = +mo.value - 1;
-  const D = +d.value;
-  const H = +h.value;
-  const MI = +mi.value;
-  const S = +s.value;
-  const MS = +ms.value;
-
-  const target = new Date(Y,M,D,H,MI,S,MS);
-
-  const nameVal = name.value || "";
-  const blurVal = blur.checked ? "1" : "0";
-
-  const file = bgFile.files[0];
-
-  if (file) {
-    const r = new FileReader();
-    r.onload = e => {
-      const data = e.target.result;
-
-      const url = new URL(location.href);
-      url.search = "";
-      url.searchParams.set("t", target.toISOString());
-      url.searchParams.set("name", nameVal);
-      url.searchParams.set("blur", blurVal);
-
-      const currentTheme = document.documentElement.classList.contains("dark") ? "dark" : "light";
-      url.searchParams.set("theme", currentTheme);
-
-      location.href = url.toString() + "#BG:" + data;
-    };
-    r.readAsDataURL(file);
-  } else {
-    const url = new URL(location.href);
-    url.search = "";
-    url.searchParams.set("t", target.toISOString());
-    url.searchParams.set("name", nameVal);
-    url.searchParams.set("blur", blurVal);
-
-    const currentTheme = document.documentElement.classList.contains("dark") ? "dark" : "light";
-    url.searchParams.set("theme", currentTheme);
-
-    location.href = url.toString();
-  }
-};
-
-/* Load from URL */
-window.onload = () => {
-  const theme = loadTheme();
-
-  themeToggle.onclick = toggleTheme;
-  themeToggle2.onclick = toggleTheme;
-
-  const p = new URLSearchParams(location.search);
-  if (!p.has("t")) return;
-
-  builder.classList.add("hidden");
-  count.classList.remove("hidden");
-
-  const target = new Date(p.get("t"));
-  ctitle.textContent = p.get("name") || "";
-  targetText.textContent = target.toLocaleString();
-
-  if (p.get("blur") === "1") document.body.classList.add("blur");
-
-  loadBackgroundFromHash();
-  startCountdown(target);
-};
+window.onload=()=>{loadTheme();themeToggle.onclick=toggleTheme;themeToggle2.onclick=toggleTheme;const p=new URLSearchParams(location.search);if(!p.has("t"))return;builder.classList.add("hidden");count.classList.remove("hidden");const t=new Date(p.get("t"));ctitle.textContent=p.get("name")||"";targetText.textContent=t.toLocaleString();if(p.get("blur")==="1")document.body.classList.add("blur");loadBG();startCountdown(t);}
 </script>
-
-</body>
-</html>
+</body></html>
